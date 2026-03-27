@@ -1,0 +1,46 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: acm_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: acm_train
+      MYSQL_USER: acm_user
+      MYSQL_PASSWORD: acm_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../backend-spring/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ../backend-spring/src/main/resources/data.sql:/docker-entrypoint-initdb.d/02-data.sql:ro
+
+  backend:
+    build:
+      context: ../backend-spring
+    container_name: acm_backend
+    restart: always
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: acm_train
+      DB_USER: acm_user
+      DB_PASS: acm_pass
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql
+
+  frontend:
+    build:
+      context: ../frontend
+    container_name: acm_frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:

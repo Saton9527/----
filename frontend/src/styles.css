@@ -1,0 +1,121 @@
+:root {
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #16202a;
+  background:
+    radial-gradient(circle at top left, rgba(250, 195, 90, 0.3), transparent 24%),
+    radial-gradient(circle at top right, rgba(34, 118, 202, 0.18), transparent 28%),
+    linear-gradient(180deg, #f7f0df 0%, #f3f5f8 100%);
+  line-height: 1.5;
+  font-weight: 400;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --card-bg: rgba(255, 255, 255, 0.76);
+  --card-border: rgba(22, 32, 42, 0.08);
+  --primary: #1d5b8f;
+  --primary-deep: #133d60;
+  --accent: #dc8d24;
+  --success: #2f8f64;
+  --muted: #607181;
+  --danger: #b5433d;
+  --shadow: 0 18px 48px rgba(23, 31, 39, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-width: 320px;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.glass-panel {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(20px);
+}
+
+.page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.page-heading h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.page-heading p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.metric-card {
+  padding: 20px;
+  border-radius: 20px;
+  overflow: hidden;
+  position: relative;
+}
+
+.metric-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -40px -40px auto;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(29, 91, 143, 0.08);
+}
+
+.metric-card strong {
+  display: block;
+  margin-top: 12px;
+  font-size: 30px;
+}
+
+.metric-card span {
+  color: var(--muted);
+}
+
+.section-card {
+  border-radius: 24px;
+  padding: 24px;
+}
+
+.fade-slide-enter-active {
+  transition: all 0.35s ease;
+}
+
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+@media (max-width: 768px) {
+  .page-heading {
+    flex-direction: column;
+  }
+}

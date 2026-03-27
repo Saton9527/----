@@ -1,0 +1,88 @@
+MySQL local ready at 127.0.0.1:3307
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by org.fusesource.jansi.internal.JansiLoader in an unnamed module (file:/D:/Java/code/毕业设计/tools/apache-maven-3.9.9/lib/jansi-2.4.1.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by com.google.common.util.concurrent.AbstractFuture$UnsafeAtomicHelper (file:/D:/Java/code/毕业设计/tools/apache-maven-3.9.9/lib/guava-33.2.1-jre.jar)
+WARNING: Please consider reporting this to the maintainers of class com.google.common.util.concurrent.AbstractFuture$UnsafeAtomicHelper
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] --------------------< com.acmtrain:backend-spring >---------------------
+[INFO] Building backend-spring 0.0.1-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.3.2:clean (default-clean) @ backend-spring ---
+[INFO] Deleting D:\Java\code\毕业设计\backend-spring\target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ backend-spring ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] Copying 2 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ backend-spring ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 34 source files with javac [debug parameters release 17] to target\classes
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ backend-spring ---
+[INFO] skip non existing resourceDirectory D:\Java\code\毕业设计\backend-spring\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ backend-spring ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ backend-spring ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.4.2:jar (default-jar) @ backend-spring ---
+[INFO] Building jar: D:\Java\code\毕业设计\backend-spring\target\backend-spring-0.0.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- spring-boot:3.3.5:repackage (repackage) @ backend-spring ---
+[INFO] Replacing main artifact D:\Java\code\毕业设计\backend-spring\target\backend-spring-0.0.1-SNAPSHOT.jar with repackaged archive, adding nested dependencies in BOOT-INF/.
+[INFO] The original artifact has been renamed to D:\Java\code\毕业设计\backend-spring\target\backend-spring-0.0.1-SNAPSHOT.jar.original
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  3.990 s
+[INFO] Finished at: 2026-03-09T18:05:38+08:00
+[INFO] ------------------------------------------------------------------------
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v3.3.5)
+
+2026-03-09T18:05:38.906+08:00  INFO 29428 --- [           main] c.acmtrain.backend.BackendApplication    : Starting BackendApplication v0.0.1-SNAPSHOT using Java 25.0.1 with PID 29428 (D:\Java\code\毕业设计\backend-spring\target\backend-spring-0.0.1-SNAPSHOT.jar started by 16043 in D:\Java\code\毕业设计\backend-spring)
+2026-03-09T18:05:38.909+08:00  INFO 29428 --- [           main] c.acmtrain.backend.BackendApplication    : No active profile set, falling back to 1 default profile: "default"
+2026-03-09T18:05:39.464+08:00  INFO 29428 --- [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-03-09T18:05:39.523+08:00  INFO 29428 --- [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 52 ms. Found 8 JPA repository interfaces.
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by org.apache.tomcat.jni.Library in an unnamed module (jar:nested:/D:/Java/code/毕业设计/backend-spring/target/backend-spring-0.0.1-SNAPSHOT.jar/!BOOT-INF/lib/tomcat-embed-core-10.1.31.jar!/)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+2026-03-09T18:05:40.038+08:00  INFO 29428 --- [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8080 (http)
+2026-03-09T18:05:40.051+08:00  INFO 29428 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-03-09T18:05:40.051+08:00  INFO 29428 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.31]
+2026-03-09T18:05:40.085+08:00  INFO 29428 --- [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-03-09T18:05:40.085+08:00  INFO 29428 --- [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 1135 ms
+2026-03-09T18:05:40.186+08:00  INFO 29428 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-03-09T18:05:40.389+08:00  INFO 29428 --- [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection com.mysql.cj.jdbc.ConnectionImpl@72906e
+2026-03-09T18:05:40.391+08:00  INFO 29428 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-03-09T18:05:40.843+08:00  INFO 29428 --- [           main] o.hibernate.jpa.internal.util.LogHelper  : HHH000204: Processing PersistenceUnitInfo [name: default]
+2026-03-09T18:05:40.893+08:00  INFO 29428 --- [           main] org.hibernate.Version                    : HHH000412: Hibernate ORM core version 6.5.3.Final
+2026-03-09T18:05:40.918+08:00  INFO 29428 --- [           main] o.h.c.internal.RegionFactoryInitiator    : HHH000026: Second-level cache disabled
+2026-03-09T18:05:41.122+08:00  INFO 29428 --- [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-03-09T18:05:41.791+08:00  INFO 29428 --- [           main] o.h.e.t.j.p.i.JtaPlatformInitiator       : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-03-09T18:05:41.793+08:00  INFO 29428 --- [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-03-09T18:05:42.473+08:00  INFO 29428 --- [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path '/'
+2026-03-09T18:05:42.487+08:00  INFO 29428 --- [           main] c.acmtrain.backend.BackendApplication    : Started BackendApplication in 3.926 seconds (process running for 4.302)
+2026-03-09T18:05:44.431+08:00  INFO 29428 --- [nio-8080-exec-2] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-03-09T18:05:44.431+08:00  INFO 29428 --- [nio-8080-exec-2] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-03-09T18:05:44.433+08:00  INFO 29428 --- [nio-8080-exec-2] o.s.web.servlet.DispatcherServlet        : Completed initialization in 2 ms
+^C
