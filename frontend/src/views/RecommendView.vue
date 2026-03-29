@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { fetchRecommendations } from '@/api/recommend';
 import type { RecommendItem } from '@/types/recommend';
+import { resolveProblemUrl } from '@/utils/problem-link';
 
 const loading = ref(false);
 const recommendations = ref<RecommendItem[]>([]);
@@ -39,8 +40,18 @@ onMounted(async () => {
     <div v-loading="loading" class="recommend-grid">
       <article v-for="item in recommendations" :key="item.id" class="section-card glass-panel recommend-card">
         <span>{{ label(item.level) }}</span>
-        <h3>{{ item.problemCode }}</h3>
-        <p>{{ item.title }}</p>
+        <h3>
+          <a v-if="resolveProblemUrl(item.problemCode)" :href="resolveProblemUrl(item.problemCode)!" target="_blank" rel="noreferrer">
+            {{ item.problemCode }}
+          </a>
+          <template v-else>{{ item.problemCode }}</template>
+        </h3>
+        <p>
+          <a v-if="resolveProblemUrl(item.problemCode)" :href="resolveProblemUrl(item.problemCode)!" target="_blank" rel="noreferrer">
+            {{ item.title }}
+          </a>
+          <template v-else>{{ item.title }}</template>
+        </p>
         <el-tag v-if="item.suggestedRating !== null" size="small">建议难度 {{ item.suggestedRating }}</el-tag>
         <p class="reason-text">{{ item.reason }}</p>
       </article>
@@ -62,6 +73,15 @@ onMounted(async () => {
 .recommend-card h3 {
   margin: 10px 0 0;
   font-size: 24px;
+}
+
+.recommend-card a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.recommend-card a:hover {
+  text-decoration: underline;
 }
 
 .recommend-card p {

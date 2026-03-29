@@ -6,6 +6,9 @@ public record AlertResponse(
         String ruleCode,
         String riskLevel,
         String hitTime,
-        String status
+        String status,
+        String description,
+        String suspiciousProblems,
+        String suggestion
 ) {
 }

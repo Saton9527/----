@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.acmtrain.backend.service.TrainingQueryServiceTest
 -------------------------------------------------------------------------------
-Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.757 s -- in com.acmtrain.backend.service.TrainingQueryServiceTest
+Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.882 s -- in com.acmtrain.backend.service.TrainingQueryServiceTest

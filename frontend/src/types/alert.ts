@@ -5,4 +5,7 @@ export interface AlertItem {
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
   hitTime: string;
   status: 'OPEN' | 'CLOSED';
+  description: string;
+  suspiciousProblems: string;
+  suggestion: string;
 }

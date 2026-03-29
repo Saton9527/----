@@ -2,12 +2,15 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import * as echarts from 'echarts';
-import { fetchTrend, type TrendPoint } from '@/api/dashboard';
+import { fetchDashboardAnalytics, fetchTrend, type DashboardAnalytics, type TrendPoint } from '@/api/dashboard';
 import { fetchContests } from '@/api/contest';
 import { fetchMyProfile, updatePlatformBinding } from '@/api/profile';
+import { fetchCoachTeams, fetchMyTeam, inviteTeamMember } from '@/api/team';
 import { useAuthStore } from '@/store/auth';
+import { resolveProblemUrl } from '@/utils/problem-link';
 import type { ContestItem } from '@/types/contest';
 import type { MyProfile } from '@/types/profile';
+import type { TeamInfo } from '@/types/team';
 
 const authStore = useAuthStore();
 const isStudent = computed(() => authStore.role === 'student');
@@ -17,7 +20,12 @@ const pieChartRef = ref<HTMLDivElement>();
 const profile = ref<MyProfile | null>(null);
 const contests = ref<ContestItem[]>([]);
 const trendData = ref<TrendPoint[]>([]);
+const analytics = ref<DashboardAnalytics | null>(null);
 const profileLoading = ref(false);
+const myTeam = ref<TeamInfo | null>(null);
+const coachTeams = ref<TeamInfo[]>([]);
+const inviteDialogVisible = ref(false);
+const inviteDialogUsername = ref('');
 
 const bindingDialogVisible = ref(false);
 const bindingSubmitting = ref(false);
@@ -33,6 +41,62 @@ const bindingRules: FormRules<typeof bindingForm> = {
 
 let trendChart: echarts.ECharts | null = null;
 let pieChart: echarts.ECharts | null = null;
+
+async function refreshTeamInfo() {
+  if (isStudent.value) {
+    myTeam.value = await fetchMyTeam().catch(() => null);
+    return;
+  }
+
+  coachTeams.value = await fetchCoachTeams().catch(() => []);
+}
+
+function buildMemberSlots(members: TeamInfo['members']) {
+  const slots: Array<{
+    key: string;
+    placeholder: boolean;
+    member: TeamInfo['members'][number] | null;
+  }> = members.map((member) => ({
+    key: `member-${member.userId}`,
+    placeholder: false,
+    member
+  }));
+
+  while (slots.length < 3) {
+    slots.push({
+      key: `placeholder-${slots.length}`,
+      placeholder: true,
+      member: null
+    });
+  }
+
+  return slots.slice(0, 3);
+}
+
+const isTeamCaptain = computed(() => {
+  if (!isStudent.value || !myTeam.value || !authStore.user) {
+    return false;
+  }
+
+  return myTeam.value.members.some((member) => member.userId === authStore.user!.id && member.role === 'CAPTAIN');
+});
+
+function onAddMemberFromDashboard() {
+  if (!isTeamCaptain.value) {
+    return;
+  }
+  inviteDialogUsername.value = '';
+  inviteDialogVisible.value = true;
+}
+
+async function onSubmitInviteDialog() {
+  if (!myTeam.value || !inviteDialogUsername.value.trim()) return;
+  await inviteTeamMember(myTeam.value.id, { username: inviteDialogUsername.value.trim() });
+  myTeam.value = await fetchMyTeam().catch(() => myTeam.value);
+  inviteDialogUsername.value = '';
+  inviteDialogVisible.value = false;
+  ElMessage.success('邀请已发送');
+}
 
 const metricCards = computed(() => {
   if (profile.value) {
@@ -52,17 +116,6 @@ const metricCards = computed(() => {
     { label: '当前身份', value: 'Coach', delta: authStore.user?.realName || '' }
   ];
 });
-
-function toSolvedSegments(solvedCount: number) {
-  const basic = Math.max(0, Math.round(solvedCount * 0.45));
-  const intermediate = Math.max(0, Math.round(solvedCount * 0.35));
-  const advanced = Math.max(0, solvedCount - basic - intermediate);
-  return [
-    { name: '1200 以下', value: basic },
-    { name: '1200-1599', value: intermediate },
-    { name: '1600 及以上', value: advanced }
-  ];
-}
 
 function renderTrendChart(data: TrendPoint[]) {
   if (!trendChartRef.value) {
@@ -109,11 +162,9 @@ function renderTrendChart(data: TrendPoint[]) {
 }
 
 function renderPieChart() {
-  if (!pieChartRef.value || !profile.value) {
+  if (!pieChartRef.value || !analytics.value) {
     return;
   }
-
-  const data = toSolvedSegments(profile.value.solvedCount);
 
   pieChart?.dispose();
   pieChart = echarts.init(pieChartRef.value);
@@ -126,7 +177,10 @@ function renderPieChart() {
         radius: ['40%', '72%'],
         center: ['50%', '45%'],
         label: { formatter: '{b}: {c}' },
-        data
+        data: analytics.value.tags.map((item) => ({
+          name: item.tag,
+          value: item.count
+        }))
       }
     ]
   });
@@ -183,23 +237,39 @@ onMounted(async () => {
     const profilePromise = isStudent.value
       ? fetchMyProfile().catch(() => null)
       : Promise.resolve(null);
+    const analyticsPromise = isStudent.value
+      ? fetchDashboardAnalytics().catch(() => null)
+      : Promise.resolve(null);
+    const teamPromise = isStudent.value
+      ? fetchMyTeam().catch(() => null)
+      : fetchCoachTeams().catch(() => []);
 
-    const [profileResult, trendResult, contestResult] = await Promise.all([
+    const [profileResult, trendResult, contestResult, analyticsResult, teamResult] = await Promise.all([
       profilePromise,
       fetchTrend().catch(() => fallbackTrend),
-      fetchContests().catch(() => [])
+      fetchContests().catch(() => []),
+      analyticsPromise,
+      teamPromise
     ]);
 
     profile.value = profileResult;
     trendData.value = trendResult;
     contests.value = contestResult;
+    analytics.value = analyticsResult;
+    if (isStudent.value) {
+      myTeam.value = teamResult as TeamInfo | null;
+    } else {
+      coachTeams.value = teamResult as TeamInfo[];
+    }
 
     await nextTick();
     renderTrendChart(trendResult);
-    if (profile.value) {
+    if (analytics.value) {
       renderPieChart();
     }
     window.addEventListener('resize', handleResize);
+    window.addEventListener('focus', refreshTeamInfo);
+    document.addEventListener('visibilitychange', refreshTeamInfo);
   } finally {
     profileLoading.value = false;
   }
@@ -207,6 +277,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
+  window.removeEventListener('focus', refreshTeamInfo);
+  document.removeEventListener('visibilitychange', refreshTeamInfo);
   trendChart?.dispose();
   pieChart?.dispose();
 });
@@ -240,6 +312,110 @@ onBeforeUnmount(() => {
       </article>
     </div>
 
+    <section class="section-card glass-panel team-summary">
+      <div class="card-header">
+        <h3>{{ isStudent ? '我的队伍' : '名下队伍' }}</h3>
+      </div>
+
+      <template v-if="isStudent">
+        <div class="team-info-card">
+          <div class="team-info-head">
+            <strong>{{ myTeam?.name || '无' }}</strong>
+            <el-tag type="primary">队伍 ID: {{ myTeam?.id || '无' }}</el-tag>
+          </div>
+          <div class="coach-section">
+            <h4>教练</h4>
+            <div class="coach-card">
+              <div class="coach-avatar">{{ (myTeam?.coachName || '无').slice(0, 1) }}</div>
+              <div class="coach-meta">
+                <div class="coach-name-row">
+                  <strong>{{ myTeam?.coachName || '无' }}</strong>
+                  <el-tag size="small" type="success">教练</el-tag>
+                </div>
+                <p>{{ myTeam?.coachName ? '当前已绑定教练' : '未指定教练' }}</p>
+              </div>
+            </div>
+          </div>
+          <div v-if="myTeam?.members?.length" class="member-section">
+            <h4>成员</h4>
+            <div class="member-grid">
+              <article
+                v-for="slot in buildMemberSlots(myTeam.members)"
+                :key="slot.key"
+                class="member-card"
+                :class="{ placeholder: slot.placeholder }"
+              >
+                <template v-if="!slot.placeholder">
+                  <div class="member-avatar">{{ slot.member!.realName.slice(0, 1) }}</div>
+                  <div class="member-meta">
+                    <div class="member-name-row">
+                      <strong>{{ slot.member!.realName }}</strong>
+                      <el-tag v-if="slot.member!.role === 'CAPTAIN'" size="small" type="primary">队长</el-tag>
+                      <el-tag v-else size="small" effect="plain">队员</el-tag>
+                    </div>
+                    <p>{{ slot.member!.username }}</p>
+                  </div>
+                </template>
+                <template v-else>
+                  <button
+                    class="member-placeholder-button"
+                    :class="{ active: isTeamCaptain }"
+                    :disabled="!isTeamCaptain"
+                    type="button"
+                    @click="onAddMemberFromDashboard"
+                  >
+                    <div class="member-placeholder">+</div>
+                  </button>
+                </template>
+              </article>
+            </div>
+          </div>
+          <p v-else>队员：无</p>
+        </div>
+      </template>
+
+      <template v-else>
+        <div v-if="coachTeams.length" class="team-summary-list">
+          <article v-for="team in coachTeams" :key="team.id" class="team-info-card">
+            <div class="team-info-head">
+              <strong>{{ team.name }}</strong>
+              <el-tag type="primary">队伍 ID: {{ team.id }}</el-tag>
+            </div>
+            <p>成员人数：{{ team.members.length }}</p>
+            <div class="member-section">
+              <h4>成员</h4>
+              <div class="member-grid">
+                <article
+                  v-for="slot in buildMemberSlots(team.members)"
+                  :key="slot.key"
+                  class="member-card"
+                  :class="{ placeholder: slot.placeholder }"
+                >
+                  <template v-if="!slot.placeholder">
+                    <div class="member-avatar">{{ slot.member!.realName.slice(0, 1) }}</div>
+                    <div class="member-meta">
+                      <div class="member-name-row">
+                        <strong>{{ slot.member!.realName }}</strong>
+                        <el-tag v-if="slot.member!.role === 'CAPTAIN'" size="small" type="primary">队长</el-tag>
+                        <el-tag v-else size="small" effect="plain">队员</el-tag>
+                      </div>
+                      <p>{{ slot.member!.username }}</p>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <button class="member-placeholder-button" disabled type="button">
+                      <div class="member-placeholder">+</div>
+                    </button>
+                  </template>
+                </article>
+              </div>
+            </div>
+          </article>
+        </div>
+        <el-empty v-else description="暂无名下队伍" :image-size="80" />
+      </template>
+    </section>
+
     <div class="dashboard-grid">
       <section class="section-card glass-panel">
         <div class="card-header">
@@ -251,7 +427,7 @@ onBeforeUnmount(() => {
 
       <section v-if="isStudent" class="section-card glass-panel">
         <div class="card-header">
-          <h3>题目难度分布</h3>
+          <h3>题型分布</h3>
         </div>
         <div ref="pieChartRef" class="chart-box pie-box" />
       </section>
@@ -267,6 +443,48 @@ onBeforeUnmount(() => {
         </ul>
       </section>
     </div>
+
+    <section v-if="isStudent && analytics" class="section-card glass-panel" style="margin-top: 18px;">
+      <div class="card-header">
+        <h3>做题分段统计</h3>
+        <el-tag type="warning">隐藏分 {{ analytics.hiddenRating }}</el-tag>
+      </div>
+      <el-table :data="analytics.buckets" empty-text="暂无统计数据">
+        <el-table-column prop="rangeLabel" label="分数段" min-width="160" />
+        <el-table-column prop="solvedCount" label="完成题数" min-width="120" />
+        <el-table-column prop="percentage" label="占比" min-width="120">
+          <template #default="{ row }">{{ row.percentage }}%</template>
+        </el-table-column>
+      </el-table>
+    </section>
+
+    <section v-if="isStudent && analytics" class="section-card glass-panel" style="margin-top: 18px;">
+      <div class="card-header">
+        <h3>题目明细分析</h3>
+        <el-tag>{{ analytics.recentSolved.length }} 题样本</el-tag>
+      </div>
+      <el-table :data="analytics.recentSolved" empty-text="暂无题目明细">
+        <el-table-column label="题号" min-width="130">
+          <template #default="{ row }">
+            <a v-if="resolveProblemUrl(row.problemCode)" :href="resolveProblemUrl(row.problemCode)!" target="_blank" rel="noreferrer">
+              {{ row.problemCode }}
+            </a>
+            <template v-else>{{ row.problemCode }}</template>
+          </template>
+        </el-table-column>
+        <el-table-column label="题目" min-width="220">
+          <template #default="{ row }">
+            <a v-if="resolveProblemUrl(row.problemCode)" :href="resolveProblemUrl(row.problemCode)!" target="_blank" rel="noreferrer">
+              {{ row.title }}
+            </a>
+            <template v-else>{{ row.title }}</template>
+          </template>
+        </el-table-column>
+        <el-table-column prop="rating" label="Rating" min-width="100" />
+        <el-table-column prop="tag" label="标签" min-width="120" />
+        <el-table-column prop="bucketLabel" label="分段" min-width="120" />
+      </el-table>
+    </section>
 
     <section class="section-card glass-panel" style="margin-top: 18px;">
       <div class="card-header">
@@ -297,6 +515,14 @@ onBeforeUnmount(() => {
       <template #footer>
         <el-button @click="bindingDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="bindingSubmitting" @click="submitBinding">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-if="isStudent" v-model="inviteDialogVisible" title="邀请队员" width="420px">
+      <el-input v-model="inviteDialogUsername" placeholder="输入要邀请的用户名" />
+      <template #footer>
+        <el-button @click="inviteDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="onSubmitInviteDialog">发送邀请</el-button>
       </template>
     </el-dialog>
   </div>
@@ -334,6 +560,174 @@ onBeforeUnmount(() => {
   margin-top: 18px;
 }
 
+.team-summary {
+  margin-top: 18px;
+}
+
+.team-summary-list {
+  display: grid;
+  gap: 14px;
+}
+
+.team-info-card {
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.team-info-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.team-info-card p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+.coach-section {
+  margin-bottom: 14px;
+}
+
+.coach-section h4 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.coach-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 10px;
+  border-radius: 14px;
+  background: rgba(29, 91, 143, 0.04);
+}
+
+.coach-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #f0b55a, #d97b5a);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.coach-meta {
+  min-width: 0;
+}
+
+.coach-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.coach-meta strong {
+  color: #16b7a7;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.coach-meta p {
+  margin: 0;
+  color: #9d9d9d;
+  font-size: 15px;
+}
+
+.member-section h4 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.member-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.member-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 10px;
+  border-radius: 14px;
+  background: rgba(29, 91, 143, 0.04);
+  min-height: 80px;
+}
+
+.member-card.placeholder {
+  justify-content: center;
+  background: rgba(29, 91, 143, 0.02);
+  border: 1px dashed rgba(29, 91, 143, 0.18);
+}
+
+.member-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #79d2bf, #5f8dcb);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.member-placeholder {
+  font-size: 36px;
+  line-height: 1;
+  color: #7aaecb;
+  font-weight: 300;
+}
+
+.member-placeholder-button {
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+
+.member-placeholder-button.active {
+  cursor: pointer;
+}
+
+.member-meta {
+  min-width: 0;
+}
+
+.member-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.member-meta strong {
+  color: #16b7a7;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.member-meta p {
+  margin: 0;
+  color: #9d9d9d;
+  font-size: 15px;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -365,7 +759,20 @@ onBeforeUnmount(() => {
   margin-top: 10px;
 }
 
+a {
+  color: #1d5b8f;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 960px) {
+  .member-grid {
+    grid-template-columns: 1fr;
+  }
+
   .dashboard-grid {
     grid-template-columns: 1fr;
   }

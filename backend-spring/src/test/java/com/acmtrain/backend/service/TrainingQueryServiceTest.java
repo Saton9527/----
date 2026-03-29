@@ -1,7 +1,9 @@
 package com.acmtrain.backend.service;
 
 import com.acmtrain.backend.dto.*;
+import com.acmtrain.backend.entity.StudentInfoEntity;
 import com.acmtrain.backend.entity.TrainingTaskEntity;
+import com.acmtrain.backend.entity.UserAccountEntity;
 import com.acmtrain.backend.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -197,5 +199,129 @@ class TrainingQueryServiceTest {
         assertThrows(ResponseStatusException.class, () -> trainingQueryService.updateTaskProgress(taskId, request));
 
         verify(trainingTaskRepository, times(1)).findById(taskId);
+    }
+
+    @Test
+    void testCreateStudent() {
+        UserAccountEntity coach = new UserAccountEntity();
+        coach.setId(99L);
+        coach.setRole("coach");
+
+        UserAccountEntity savedUser = new UserAccountEntity();
+        savedUser.setId(10L);
+        savedUser.setUsername("student10");
+        savedUser.setRealName("学生十号");
+        savedUser.setRole("student");
+
+        StudentInfoEntity savedStudent = new StudentInfoEntity();
+        savedStudent.setId(8L);
+        savedStudent.setUserId(10L);
+        savedStudent.setRealName("学生十号");
+        savedStudent.setGrade("2023");
+        savedStudent.setMajor("计算机科学与技术");
+        savedStudent.setCfHandle("student10_cf");
+        savedStudent.setAtcHandle("student10_atc");
+        savedStudent.setCfRating(1600);
+        savedStudent.setAtcRating(1450);
+        savedStudent.setSolvedCount(120);
+        savedStudent.setTotalPoints(220);
+
+        when(userAccountRepository.findById(99L)).thenReturn(java.util.Optional.of(coach));
+        when(userAccountRepository.findByUsername("student10")).thenReturn(java.util.Optional.empty());
+        when(userAccountRepository.save(any(UserAccountEntity.class))).thenReturn(savedUser);
+        when(studentInfoRepository.save(any(StudentInfoEntity.class))).thenReturn(savedStudent);
+
+        StudentResponse result = trainingQueryService.createStudent(99L, new CreateStudentRequest(
+                "student10",
+                "123456",
+                "学生十号",
+                "2023",
+                "计算机科学与技术",
+                "student10_cf",
+                "student10_atc",
+                1600,
+                1450,
+                120,
+                220
+        ));
+
+        assertNotNull(result);
+        assertEquals("student10", result.username());
+        assertEquals("学生十号", result.realName());
+        verify(userAccountRepository).save(any(UserAccountEntity.class));
+        verify(studentInfoRepository).save(any(StudentInfoEntity.class));
+    }
+
+    @Test
+    void testUpdateStudent() {
+        UserAccountEntity coach = new UserAccountEntity();
+        coach.setId(99L);
+        coach.setRole("coach");
+
+        StudentInfoEntity existingStudent = new StudentInfoEntity();
+        existingStudent.setId(8L);
+        existingStudent.setUserId(10L);
+        existingStudent.setRealName("旧姓名");
+        existingStudent.setGrade("2022");
+        existingStudent.setMajor("软件工程");
+        existingStudent.setCfHandle("old_cf");
+        existingStudent.setCfRating(1200);
+        existingStudent.setAtcRating(1100);
+        existingStudent.setSolvedCount(50);
+        existingStudent.setTotalPoints(80);
+
+        UserAccountEntity existingUser = new UserAccountEntity();
+        existingUser.setId(10L);
+        existingUser.setUsername("student10");
+        existingUser.setPassword("oldpass");
+        existingUser.setRealName("旧姓名");
+        existingUser.setRole("student");
+
+        UserAccountEntity savedUser = new UserAccountEntity();
+        savedUser.setId(10L);
+        savedUser.setUsername("student10new");
+        savedUser.setPassword("oldpass");
+        savedUser.setRealName("新姓名");
+        savedUser.setRole("student");
+
+        StudentInfoEntity savedStudent = new StudentInfoEntity();
+        savedStudent.setId(8L);
+        savedStudent.setUserId(10L);
+        savedStudent.setRealName("新姓名");
+        savedStudent.setGrade("2023");
+        savedStudent.setMajor("计算机科学与技术");
+        savedStudent.setCfHandle("new_cf");
+        savedStudent.setAtcHandle("new_atc");
+        savedStudent.setCfRating(1650);
+        savedStudent.setAtcRating(1500);
+        savedStudent.setSolvedCount(180);
+        savedStudent.setTotalPoints(260);
+
+        when(userAccountRepository.findById(99L)).thenReturn(java.util.Optional.of(coach));
+        when(studentInfoRepository.findById(8L)).thenReturn(java.util.Optional.of(existingStudent));
+        when(userAccountRepository.findById(10L)).thenReturn(java.util.Optional.of(existingUser));
+        when(userAccountRepository.findByUsername("student10new")).thenReturn(java.util.Optional.empty());
+        when(userAccountRepository.save(any(UserAccountEntity.class))).thenReturn(savedUser);
+        when(studentInfoRepository.save(any(StudentInfoEntity.class))).thenReturn(savedStudent);
+
+        StudentResponse result = trainingQueryService.updateStudent(99L, 8L, new UpdateStudentRequest(
+                "student10new",
+                "",
+                "新姓名",
+                "2023",
+                "计算机科学与技术",
+                "new_cf",
+                "new_atc",
+                1650,
+                1500,
+                180,
+                260
+        ));
+
+        assertNotNull(result);
+        assertEquals("student10new", result.username());
+        assertEquals("新姓名", result.realName());
+        verify(userAccountRepository).save(any(UserAccountEntity.class));
+        verify(studentInfoRepository).save(any(StudentInfoEntity.class));
     }
 }

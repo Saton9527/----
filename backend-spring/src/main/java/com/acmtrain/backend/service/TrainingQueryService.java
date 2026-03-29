@@ -22,10 +22,12 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.IntStream;
 
@@ -40,6 +42,9 @@ public class TrainingQueryService {
     }
 
     private record ProblemSeed(String code, String title, int rating) {
+    }
+
+    private record TagSeed(String name, double weight) {
     }
 
     private static final Logger logger = LoggerFactory.getLogger(TrainingQueryService.class);
@@ -232,6 +237,18 @@ public class TrainingQueryService {
                 .toList();
     }
 
+    public DashboardAnalyticsResponse dashboardAnalytics(Long userId) {
+        StudentInfoEntity student = studentInfoRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "当前用户暂无学生档案"));
+
+        int totalSolved = student.getSolvedCount() == null ? 0 : student.getSolvedCount();
+        int hiddenRating = computeHiddenRating(student);
+        List<ProblemBucketResponse> buckets = buildProblemBuckets(totalSolved, hiddenRating);
+        List<ProblemTagResponse> tags = buildProblemTags(totalSolved, hiddenRating);
+        List<ProblemDetailResponse> recentSolved = buildProblemDetails(hiddenRating, tags);
+        return new DashboardAnalyticsResponse(totalSolved, hiddenRating, buckets, tags, recentSolved);
+    }
+
     @Cacheable(value = "myProfile", key = "#userId")
     public MyProfileResponse myProfile(Long userId) {
         UserAccountEntity user = userAccountRepository.findById(userId)
@@ -312,7 +329,7 @@ public class TrainingQueryService {
         Page<?> entityPage = studentInfoRepository.findAll(pageable);
 
         List<StudentResponse> content = entityPage.stream()
-                .map(e -> DtoMapper.toStudentResponse((com.acmtrain.backend.entity.StudentInfoEntity) e))
+                .map(e -> toStudentResponse((StudentInfoEntity) e))
                 .toList();
 
         return new PageResponse<>(
@@ -324,6 +341,60 @@ public class TrainingQueryService {
                 entityPage.isLast(),
                 entityPage.isFirst()
         );
+    }
+
+    @Transactional
+    @CacheEvict(value = {"students", "myProfile", "recommendations"}, allEntries = true)
+    public StudentResponse createStudent(Long operatorId, CreateStudentRequest request) {
+        validateCoach(operatorId);
+
+        String username = normalizeRequired(request.username(), "username");
+        if (userAccountRepository.findByUsername(username).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "账号已存在");
+        }
+
+        UserAccountEntity user = new UserAccountEntity();
+        user.setUsername(username);
+        user.setPassword(normalizeRequired(request.password(), "password"));
+        user.setRealName(normalizeRequired(request.realName(), "realName"));
+        user.setRole("student");
+        UserAccountEntity savedUser = userAccountRepository.save(user);
+
+        StudentInfoEntity student = new StudentInfoEntity();
+        fillStudentInfo(student, savedUser.getId(), request.realName(), request.grade(), request.major(), request.cfHandle(),
+                request.atcHandle(), request.cfRating(), request.atcRating(), request.solvedCount(), request.totalPoints());
+        StudentInfoEntity savedStudent = studentInfoRepository.save(student);
+        return toStudentResponse(savedStudent, savedUser);
+    }
+
+    @Transactional
+    @CacheEvict(value = {"students", "myProfile", "recommendations"}, allEntries = true)
+    public StudentResponse updateStudent(Long operatorId, Long id, UpdateStudentRequest request) {
+        validateCoach(operatorId);
+
+        StudentInfoEntity student = studentInfoRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "学生不存在"));
+        UserAccountEntity user = userAccountRepository.findById(student.getUserId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "学生账号不存在"));
+
+        String username = normalizeRequired(request.username(), "username");
+        Optional<UserAccountEntity> duplicated = userAccountRepository.findByUsername(username);
+        if (duplicated.isPresent() && !duplicated.get().getId().equals(user.getId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "账号已存在");
+        }
+
+        user.setUsername(username);
+        user.setRealName(normalizeRequired(request.realName(), "realName"));
+        if (request.password() != null && !request.password().isBlank()) {
+            user.setPassword(request.password().trim());
+        }
+        user.setRole("student");
+        UserAccountEntity savedUser = userAccountRepository.save(user);
+
+        fillStudentInfo(student, savedUser.getId(), request.realName(), request.grade(), request.major(), request.cfHandle(),
+                request.atcHandle(), request.cfRating(), request.atcRating(), request.solvedCount(), request.totalPoints());
+        StudentInfoEntity savedStudent = studentInfoRepository.save(student);
+        return toStudentResponse(savedStudent, savedUser);
     }
 
     private List<RecommendationResponse> buildAlgorithmRecommendations(StudentInfoEntity student) {
@@ -410,6 +481,122 @@ public class TrainingQueryService {
         solvedBoost = clamp(solvedBoost, -140, 320);
 
         return clamp(baseRating + solvedBoost, 800, 3200);
+    }
+
+    private List<ProblemBucketResponse> buildProblemBuckets(int totalSolved, int hiddenRating) {
+        List<String> labels = List.of("800-1199", "1200-1399", "1400-1599", "1600-1899", "1900+");
+        List<Integer> targets = List.of(1000, 1300, 1500, 1750, 2050);
+        List<Double> weights = targets.stream()
+                .map(target -> Math.max(0.12, 1.15 - Math.abs(hiddenRating - target) / 900.0))
+                .toList();
+
+        List<Integer> counts = allocateCounts(totalSolved, weights);
+        List<ProblemBucketResponse> buckets = new ArrayList<>();
+        for (int i = 0; i < labels.size(); i++) {
+            int count = counts.get(i);
+            int percentage = totalSolved == 0 ? 0 : (int) Math.round(count * 100.0 / totalSolved);
+            buckets.add(new ProblemBucketResponse(labels.get(i), count, percentage));
+        }
+        return buckets;
+    }
+
+    private List<ProblemTagResponse> buildProblemTags(int totalSolved, int hiddenRating) {
+        List<String> tags = List.of("Greedy", "Implementation", "DP", "Graph", "String");
+        double graphWeight = hiddenRating >= 1700 ? 1.05 : 0.8;
+        double dpWeight = hiddenRating >= 1600 ? 1.0 : 0.78;
+        double stringWeight = hiddenRating >= 1500 ? 0.86 : 0.72;
+        List<Double> weights = List.of(
+                hiddenRating >= 1450 ? 0.98 : 0.88,
+                hiddenRating >= 1450 ? 0.92 : 1.1,
+                dpWeight,
+                graphWeight,
+                stringWeight
+        );
+
+        List<Integer> counts = allocateCounts(Math.max(totalSolved, 1), weights);
+        List<ProblemTagResponse> distribution = new ArrayList<>();
+        for (int i = 0; i < tags.size(); i++) {
+            distribution.add(new ProblemTagResponse(tags.get(i), counts.get(i)));
+        }
+        return distribution;
+    }
+
+    private List<ProblemDetailResponse> buildProblemDetails(int hiddenRating, List<ProblemTagResponse> tags) {
+        List<TagSeed> weightedTags = tags.stream()
+                .map(tag -> new TagSeed(tag.tag(), tag.count()))
+                .toList();
+
+        return PROBLEM_BANK.stream()
+                .sorted(Comparator.comparingInt(seed -> Math.abs(seed.rating() - hiddenRating)))
+                .limit(12)
+                .map(seed -> new ProblemDetailResponse(
+                        seed.code(),
+                        seed.title(),
+                        seed.rating(),
+                        pickTagForRating(seed.rating(), weightedTags),
+                        resolveBucketLabel(seed.rating())
+                ))
+                .toList();
+    }
+
+    private String pickTagForRating(int rating, List<TagSeed> weightedTags) {
+        if (weightedTags.isEmpty()) {
+            return "Implementation";
+        }
+        int index = Math.abs(rating / 100) % weightedTags.size();
+        return weightedTags.get(index).name();
+    }
+
+    private String resolveBucketLabel(int rating) {
+        if (rating < 1200) {
+            return "800-1199";
+        }
+        if (rating < 1400) {
+            return "1200-1399";
+        }
+        if (rating < 1600) {
+            return "1400-1599";
+        }
+        if (rating < 1900) {
+            return "1600-1899";
+        }
+        return "1900+";
+    }
+
+    private List<Integer> allocateCounts(int total, List<Double> weights) {
+        if (weights.isEmpty()) {
+            return List.of();
+        }
+        if (total <= 0) {
+            return weights.stream().map(weight -> 0).toList();
+        }
+
+        double weightSum = weights.stream().mapToDouble(Double::doubleValue).sum();
+        List<Integer> counts = new ArrayList<>();
+        List<Double> remainders = new ArrayList<>();
+        int assigned = 0;
+
+        for (double weight : weights) {
+            double raw = total * weight / weightSum;
+            int floor = (int) Math.floor(raw);
+            counts.add(floor);
+            remainders.add(raw - floor);
+            assigned += floor;
+        }
+
+        while (assigned < total) {
+            int bestIndex = 0;
+            for (int i = 1; i < remainders.size(); i++) {
+                if (remainders.get(i) > remainders.get(bestIndex)) {
+                    bestIndex = i;
+                }
+            }
+            counts.set(bestIndex, counts.get(bestIndex) + 1);
+            remainders.set(bestIndex, 0.0);
+            assigned++;
+        }
+
+        return counts;
     }
 
     private RankingMetric resolveRankingMetric(String metric) {
@@ -507,6 +694,77 @@ public class TrainingQueryService {
                 student.getSolvedCount(),
                 student.getTotalPoints()
         );
+    }
+
+    private StudentResponse toStudentResponse(StudentInfoEntity student) {
+        UserAccountEntity user = userAccountRepository.findById(student.getUserId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "学生账号不存在"));
+        return toStudentResponse(student, user);
+    }
+
+    private StudentResponse toStudentResponse(StudentInfoEntity student, UserAccountEntity user) {
+        return new StudentResponse(
+                student.getId(),
+                student.getUserId(),
+                user.getUsername(),
+                student.getRealName(),
+                student.getGrade(),
+                student.getMajor(),
+                student.getCfHandle(),
+                student.getAtcHandle(),
+                student.getCfRating(),
+                student.getAtcRating(),
+                student.getSolvedCount(),
+                student.getTotalPoints()
+        );
+    }
+
+    private void validateCoach(Long userId) {
+        UserAccountEntity operator = userAccountRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "当前用户不存在"));
+        if (!"coach".equalsIgnoreCase(operator.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "只有教练可以维护学生账号");
+        }
+    }
+
+    private void fillStudentInfo(
+            StudentInfoEntity student,
+            Long userId,
+            String realName,
+            String grade,
+            String major,
+            String cfHandle,
+            String atcHandle,
+            Integer cfRating,
+            Integer atcRating,
+            Integer solvedCount,
+            Integer totalPoints
+    ) {
+        student.setUserId(userId);
+        student.setRealName(normalizeRequired(realName, "realName"));
+        student.setGrade(normalizeRequired(grade, "grade"));
+        student.setMajor(normalizeRequired(major, "major"));
+        student.setCfHandle(normalizeRequired(cfHandle, "cfHandle"));
+        student.setAtcHandle(normalizeOptional(atcHandle));
+        student.setCfRating(defaultNumber(cfRating));
+        student.setAtcRating(defaultNumber(atcRating));
+        student.setSolvedCount(defaultNumber(solvedCount));
+        student.setTotalPoints(defaultNumber(totalPoints));
+    }
+
+    private String normalizeRequired(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " 不能为空");
+        }
+        return value.trim();
+    }
+
+    private String normalizeOptional(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private Integer defaultNumber(Integer value) {
+        return value == null ? 0 : value;
     }
 
     private LocalDateTime parseDateTime(String input) {

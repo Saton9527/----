@@ -1,5 +1,5 @@
-<script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+﻿<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useAuthStore } from '@/store/auth';
 import {
@@ -23,6 +23,8 @@ const invites = ref<TeamInvite[]>([]);
 const createTeamName = ref('');
 const inviteUsername = ref('');
 const coachUsername = ref('');
+const inviteDialogVisible = ref(false);
+const inviteDialogUsername = ref('');
 
 const isCoach = computed(() => authStore.role === 'coach');
 const myUserId = computed(() => authStore.user?.id ?? -1);
@@ -30,6 +32,28 @@ const isCaptain = computed(() => {
   if (!team.value) return false;
   return team.value.members.some((m) => m.userId === myUserId.value && m.role === 'CAPTAIN');
 });
+
+function buildMemberSlots(members: TeamInfo['members']) {
+  const slots: Array<{
+    key: string;
+    placeholder: boolean;
+    member: TeamInfo['members'][number] | null;
+  }> = members.map((member) => ({
+    key: `member-${member.userId}`,
+    placeholder: false,
+    member
+  }));
+
+  while (slots.length < 3) {
+    slots.push({
+      key: `placeholder-${slots.length}`,
+      placeholder: true,
+      member: null
+    });
+  }
+
+  return slots.slice(0, 3);
+}
 
 async function reloadStudentData() {
   team.value = await fetchMyTeam();
@@ -64,6 +88,7 @@ async function onCreateTeam() {
 async function onInviteMember() {
   if (!team.value || !inviteUsername.value.trim()) return;
   await inviteTeamMember(team.value.id, { username: inviteUsername.value.trim() });
+  team.value = await fetchMyTeam();
   inviteUsername.value = '';
   ElMessage.success('邀请已发送');
   invites.value = await fetchMyTeamInvites();
@@ -88,7 +113,40 @@ async function onRejectInvite(inviteId: number) {
   ElMessage.success('已拒绝邀请');
 }
 
+function onAddMember() {
+  if (!team.value || !isCaptain.value || team.value.members.length >= 3) {
+    return;
+  }
+
+  inviteDialogUsername.value = '';
+  inviteDialogVisible.value = true;
+}
+
+async function onSubmitInviteDialog() {
+  if (!team.value || !inviteDialogUsername.value.trim()) return;
+  await inviteTeamMember(team.value.id, { username: inviteDialogUsername.value.trim() });
+  team.value = await fetchMyTeam();
+  inviteDialogUsername.value = '';
+  inviteDialogVisible.value = false;
+  ElMessage.success('邀请已发送');
+  invites.value = await fetchMyTeamInvites();
+}
+
+async function refreshOnFocus() {
+  await reloadAll();
+}
+
 onMounted(reloadAll);
+
+onMounted(() => {
+  window.addEventListener('focus', refreshOnFocus);
+  document.addEventListener('visibilitychange', refreshOnFocus);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', refreshOnFocus);
+  document.removeEventListener('visibilitychange', refreshOnFocus);
+});
 </script>
 
 <template>
@@ -107,10 +165,33 @@ onMounted(reloadAll);
             <strong>{{ item.name }}</strong>
             <span>队伍 ID: {{ item.id }}</span>
           </header>
-          <div class="member-list">
-            <el-tag v-for="member in item.members" :key="member.userId" effect="plain">
-              {{ member.realName }} / {{ member.role }}
-            </el-tag>
+          <div class="member-section">
+            <h4>成员</h4>
+            <div class="member-grid">
+              <article
+                v-for="slot in buildMemberSlots(item.members)"
+                :key="slot.key"
+                class="member-card"
+                :class="{ placeholder: slot.placeholder }"
+              >
+                <template v-if="!slot.placeholder">
+                  <div class="member-avatar">{{ slot.member!.realName.slice(0, 1) }}</div>
+                  <div class="member-meta">
+                    <div class="member-name-row">
+                      <strong>{{ slot.member!.realName }}</strong>
+                      <el-tag v-if="slot.member!.role === 'CAPTAIN'" size="small" type="primary">队长</el-tag>
+                      <el-tag v-else size="small" effect="plain">队员</el-tag>
+                    </div>
+                    <p>{{ slot.member!.username }}</p>
+                  </div>
+                </template>
+                <template v-else>
+                  <button class="member-placeholder-button" disabled type="button">
+                    <div class="member-placeholder">+</div>
+                  </button>
+                </template>
+              </article>
+            </div>
           </div>
         </article>
       </div>
@@ -124,11 +205,52 @@ onMounted(reloadAll);
               <strong>{{ team.name }}</strong>
               <span>队伍 ID: {{ team.id }}</span>
             </header>
-            <p>教练：{{ team.coachName ?? '未指定' }}</p>
-            <div class="member-list">
-              <el-tag v-for="member in team.members" :key="member.userId" effect="plain">
-                {{ member.realName }} / {{ member.role }}
-              </el-tag>
+            <div class="coach-section">
+              <h4>教练</h4>
+              <div class="coach-card">
+                <div class="coach-avatar">{{ (team.coachName ?? '无').slice(0, 1) }}</div>
+                <div class="coach-meta">
+                  <div class="coach-name-row">
+                    <strong>{{ team.coachName ?? '无' }}</strong>
+                    <el-tag size="small" type="success">教练</el-tag>
+                  </div>
+                  <p>{{ team.coachName ? '当前已绑定教练' : '未指定教练' }}</p>
+                </div>
+              </div>
+            </div>
+            <div class="member-section">
+              <h4>成员</h4>
+              <div class="member-grid">
+                <article
+                  v-for="slot in buildMemberSlots(team.members)"
+                  :key="slot.key"
+                  class="member-card"
+                  :class="{ placeholder: slot.placeholder }"
+                >
+                  <template v-if="!slot.placeholder">
+                    <div class="member-avatar">{{ slot.member!.realName.slice(0, 1) }}</div>
+                    <div class="member-meta">
+                      <div class="member-name-row">
+                        <strong>{{ slot.member!.realName }}</strong>
+                        <el-tag v-if="slot.member!.role === 'CAPTAIN'" size="small" type="primary">队长</el-tag>
+                        <el-tag v-else size="small" effect="plain">队员</el-tag>
+                      </div>
+                      <p>{{ slot.member!.username }}</p>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <button
+                      class="member-placeholder-button"
+                      :class="{ active: isCaptain }"
+                      :disabled="!isCaptain"
+                      type="button"
+                      @click="onAddMember"
+                    >
+                      <div class="member-placeholder">+</div>
+                    </button>
+                  </template>
+                </article>
+              </div>
             </div>
           </div>
 
@@ -160,6 +282,14 @@ onMounted(reloadAll);
         </div>
       </section>
     </template>
+
+    <el-dialog v-model="inviteDialogVisible" title="邀请队员" width="420px">
+      <el-input v-model="inviteDialogUsername" placeholder="输入要邀请的用户名" />
+      <template #footer>
+        <el-button @click="inviteDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="onSubmitInviteDialog">发送邀请</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -183,15 +313,108 @@ onMounted(reloadAll);
   margin-bottom: 8px;
 }
 
-.team-card p {
-  margin: 6px 0 12px;
-  color: var(--muted);
+.coach-section,
+.member-section {
+  margin-top: 14px;
 }
 
-.member-list {
+.coach-section h4,
+.member-section h4 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.coach-card,
+.member-card {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 10px;
+  border-radius: 14px;
+  background: rgba(29, 91, 143, 0.04);
+  min-height: 80px;
+}
+
+.coach-avatar,
+.member-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.coach-avatar {
+  background: linear-gradient(135deg, #f0b55a, #d97b5a);
+}
+
+.member-avatar {
+  background: linear-gradient(135deg, #79d2bf, #5f8dcb);
+}
+
+.coach-meta,
+.member-meta {
+  min-width: 0;
+}
+
+.coach-name-row,
+.member-name-row {
+  display: flex;
+  align-items: center;
   gap: 8px;
+  margin-bottom: 6px;
+}
+
+.coach-meta strong,
+.member-meta strong {
+  color: #16b7a7;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.coach-meta p,
+.member-meta p {
+  margin: 0;
+  color: #9d9d9d;
+  font-size: 15px;
+}
+
+.member-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.member-card.placeholder {
+  justify-content: center;
+  background: rgba(29, 91, 143, 0.02);
+  border: 1px dashed rgba(29, 91, 143, 0.18);
+}
+
+.member-placeholder-button {
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+
+.member-placeholder-button.active {
+  cursor: pointer;
+}
+
+.member-placeholder {
+  font-size: 36px;
+  line-height: 1;
+  color: #7aaecb;
+  font-weight: 300;
 }
 
 .action-grid {
@@ -228,6 +451,12 @@ onMounted(reloadAll);
 .invite-actions {
   display: flex;
   gap: 8px;
+}
+
+@media (max-width: 960px) {
+  .member-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 760px) {

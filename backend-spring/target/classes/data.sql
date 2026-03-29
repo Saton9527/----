@@ -46,32 +46,15 @@ INSERT INTO student_info (id, user_id, real_name, grade, major, cf_handle, atc_h
 (3, 4, '演示学生C', '2024', '数据科学与大数据技术', 'student03_cf', 'student03_atc', 1490, 1330, 123, 198),
 (4, 6, '演示用户', '2024', '人工智能', 'demo_cf', 'demo_atc', 1360, 1290, 98, 186);
 
-INSERT INTO team (id, name, coach_id, created_at) VALUES
-(1, 'AlphaCoders', 1, '2026-03-09 18:00:00');
-
-INSERT INTO team_member (id, team_id, user_id, member_role, created_at) VALUES
-(1, 1, 2, 'CAPTAIN', '2026-03-09 18:00:00'),
-(2, 1, 3, 'MEMBER', '2026-03-09 18:05:00');
-
-INSERT INTO team_invite (id, team_id, inviter_id, invitee_id, status, created_at) VALUES
-(1, 1, 2, 4, 'PENDING', '2026-03-09 18:10:00');
-
 INSERT INTO problemset_link (id, platform, title, url, created_by, created_at) VALUES
-(1, 'LUOGU', '洛谷入门经典题单', 'https://www.luogu.com.cn/training/list', 1, '2026-03-09 19:00:00'),
-(2, 'LUOGU', '洛谷图论专项', 'https://www.luogu.com.cn/training/38450', 1, '2026-03-09 19:05:00');
+(1, 'LUOGU', '基础入门题单', 'https://www.luogu.com.cn/training/100', 1, '2026-03-10 19:00:00'),
+(2, 'LUOGU', '图论训练题单', 'https://www.luogu.com.cn/training/101', 1, '2026-03-11 19:00:00');
 
 INSERT INTO problemset_progress (id, user_id, problemset_id, solved, updated_at) VALUES
-(1, 2, 1, 1, '2026-03-10 20:30:00'),
-(2, 2, 2, 0, '2026-03-10 20:35:00'),
-(3, 3, 1, 1, '2026-03-11 21:10:00');
+(1, 2, 1, TRUE, '2026-03-12 21:00:00'),
+(2, 2, 2, FALSE, '2026-03-13 21:00:00'),
+(3, 3, 1, TRUE, '2026-03-12 22:00:00');
 
-INSERT INTO contest_link (id, platform, title, url, created_by, created_at) VALUES
-(1, 'QOJ', 'QOJ 模拟训练赛 #1', 'https://qoj.ac/contest/1', 1, '2026-03-09 19:30:00'),
-(2, 'QOJ', 'QOJ 模拟训练赛 #2', 'https://qoj.ac/contest/2', 1, '2026-03-09 19:35:00');
-
-INSERT INTO coach_task (id, coach_id, team_id, title, description, deadline, created_at) VALUES
-(1, 1, 1, '本周图论刷题', '完成 6 道最短路与并查集相关题目。', '2026-03-20 23:00:00', '2026-03-10 09:00:00');
-
-INSERT INTO coach_task_assignment (id, task_id, user_id, status, created_at, completed_at) VALUES
-(1, 1, 2, 'IN_PROGRESS', '2026-03-10 09:00:00', NULL),
-(2, 1, 3, 'DONE', '2026-03-10 09:00:00', '2026-03-12 20:15:00');
+INSERT INTO contest_link (id, platform, title, url, start_time, reminder_minutes, created_by, created_at) VALUES
+(1, 'QOJ', '周末训练赛 A', 'https://qoj.ac/contest/101', '2026-03-29 19:30:00', 120, 1, '2026-03-20 10:00:00'),
+(2, 'QOJ', '周末训练赛 B', 'https://qoj.ac/contest/102', '2026-04-02 19:00:00', 60, 1, '2026-03-21 10:00:00');

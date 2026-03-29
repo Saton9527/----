@@ -1,8 +1,13 @@
 package com.acmtrain.backend.controller;
 
 import com.acmtrain.backend.dto.*;
+import com.acmtrain.backend.service.StudentImportService;
 import com.acmtrain.backend.service.TrainingQueryService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -12,9 +17,11 @@ import java.util.List;
 public class TrainingController {
 
     private final TrainingQueryService trainingQueryService;
+    private final StudentImportService studentImportService;
 
-    public TrainingController(TrainingQueryService trainingQueryService) {
+    public TrainingController(TrainingQueryService trainingQueryService, StudentImportService studentImportService) {
         this.trainingQueryService = trainingQueryService;
+        this.studentImportService = studentImportService;
     }
 
     @GetMapping("/tasks")
@@ -60,6 +67,11 @@ public class TrainingController {
         return trainingQueryService.trend();
     }
 
+    @GetMapping("/dashboard/me/analytics")
+    public DashboardAnalyticsResponse dashboardAnalytics(@RequestAttribute("userId") Long userId) {
+        return trainingQueryService.dashboardAnalytics(userId);
+    }
+
     @GetMapping("/profile/me")
     public MyProfileResponse myProfile(@RequestAttribute("userId") Long userId) {
         return trainingQueryService.myProfile(userId);
@@ -93,5 +105,39 @@ public class TrainingController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return trainingQueryService.students(page, size);
+    }
+
+    @PostMapping("/students")
+    public StudentResponse createStudent(
+            @RequestAttribute("userId") Long userId,
+            @Valid @RequestBody CreateStudentRequest request
+    ) {
+        return trainingQueryService.createStudent(userId, request);
+    }
+
+    @PutMapping("/students/{id}")
+    public StudentResponse updateStudent(
+            @RequestAttribute("userId") Long userId,
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateStudentRequest request
+    ) {
+        return trainingQueryService.updateStudent(userId, id, request);
+    }
+
+    @PostMapping("/students/import")
+    public StudentImportResultResponse importStudents(
+            @RequestAttribute("userId") Long userId,
+            @RequestPart("file") MultipartFile file
+    ) {
+        return studentImportService.importStudents(userId, file);
+    }
+
+    @GetMapping("/students/import/template")
+    public ResponseEntity<byte[]> downloadStudentImportTemplate(@RequestAttribute("userId") Long userId) {
+        byte[] template = studentImportService.downloadTemplate(userId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=student-import-template.xlsx")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(template);
     }
 }

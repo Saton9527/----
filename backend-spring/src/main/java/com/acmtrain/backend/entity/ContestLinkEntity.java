@@ -21,6 +21,12 @@ public class ContestLinkEntity {
     @Column(nullable = false)
     private String url;
 
+    @Column(name = "start_time", nullable = false)
+    private LocalDateTime startTime;
+
+    @Column(name = "reminder_minutes", nullable = false)
+    private Integer reminderMinutes;
+
     @Column(name = "created_by", nullable = false)
     private Long createdBy;
 
@@ -35,6 +41,10 @@ public class ContestLinkEntity {
     public void setTitle(String title) { this.title = title; }
     public String getUrl() { return url; }
     public void setUrl(String url) { this.url = url; }
+    public LocalDateTime getStartTime() { return startTime; }
+    public void setStartTime(LocalDateTime startTime) { this.startTime = startTime; }
+    public Integer getReminderMinutes() { return reminderMinutes; }
+    public void setReminderMinutes(Integer reminderMinutes) { this.reminderMinutes = reminderMinutes; }
     public Long getCreatedBy() { return createdBy; }
     public void setCreatedBy(Long createdBy) { this.createdBy = createdBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }

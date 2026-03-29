@@ -73,14 +73,19 @@ function onLogout() {
   min-height: 100vh;
   gap: 18px;
   padding: 18px;
+  align-items: start;
 }
 
 .layout-sidebar {
+  position: sticky;
+  top: 18px;
+  height: calc(100vh - 36px);
   border-radius: 28px;
   padding: 24px 18px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  overflow-y: auto;
 }
 
 .brand {

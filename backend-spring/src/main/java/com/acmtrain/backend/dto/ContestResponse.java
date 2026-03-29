@@ -4,6 +4,10 @@ public record ContestResponse(
         Long id,
         String platform,
         String title,
-        String url
+        String url,
+        String startTime,
+        String reminderTime,
+        Integer reminderMinutes,
+        String status
 ) {
 }

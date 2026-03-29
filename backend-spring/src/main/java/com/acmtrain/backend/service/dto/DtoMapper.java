@@ -69,13 +69,29 @@ public class DtoMapper {
     }
 
     public static AlertResponse toAlertResponse(AlertLogEntity entity) {
+        String description = switch (entity.getRuleCode()) {
+            case "RULE_1" -> "短时间内高频通过，超过当前训练画像的正常波动范围。";
+            case "RULE_4" -> "通过题目难度跳跃明显，和近期稳定区间存在偏差。";
+            default -> "训练行为触发异常检测规则。";
+        };
+
+        String suspiciousProblems = switch (entity.getRuleCode()) {
+            case "RULE_1" -> "CF 1749C, CF 1901B, CF 1843C";
+            case "RULE_4" -> "CF 1851C, CF 1899D";
+            default -> "CF 1607A";
+        };
+
+        String suggestion = "建议教练结合最近比赛记录和提交节奏进行人工复核。";
         return new AlertResponse(
                 entity.getId(),
                 entity.getUserName(),
                 entity.getRuleCode(),
                 entity.getRiskLevel(),
                 entity.getHitTime().format(DATETIME_OUTPUT),
-                entity.getStatus()
+                entity.getStatus(),
+                description,
+                suspiciousProblems,
+                suggestion
         );
     }
 
@@ -83,6 +99,7 @@ public class DtoMapper {
         return new StudentResponse(
                 entity.getId(),
                 entity.getUserId(),
+                null,
                 entity.getRealName(),
                 entity.getGrade(),
                 entity.getMajor(),
@@ -111,11 +128,27 @@ public class DtoMapper {
     }
 
     public static ContestResponse toContestResponse(ContestLinkEntity entity) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime startTime = entity.getStartTime();
+        LocalDateTime reminderTime = startTime.minusMinutes(entity.getReminderMinutes());
+        String status;
+        if (startTime.isBefore(now)) {
+            status = "FINISHED";
+        } else if (startTime.toLocalDate().isEqual(now.toLocalDate())) {
+            status = "TODAY";
+        } else {
+            status = "UPCOMING";
+        }
+
         return new ContestResponse(
                 entity.getId(),
                 entity.getPlatform(),
                 entity.getTitle(),
-                entity.getUrl()
+                entity.getUrl(),
+                startTime.format(DATETIME_OUTPUT),
+                reminderTime.format(DATETIME_OUTPUT),
+                entity.getReminderMinutes(),
+                status
         );
     }
 

@@ -27,7 +27,7 @@ CREATE TABLE training_task (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   title VARCHAR(128) NOT NULL,
   description VARCHAR(255) NOT NULL,
-  deadline DATETIME NOT NULL,
+  deadline TIMESTAMP NOT NULL,
   status VARCHAR(32) NOT NULL,
   total_problems INT NOT NULL,
   completed_problems INT NOT NULL
@@ -49,7 +49,7 @@ CREATE TABLE point_log (
   source_type VARCHAR(32) NOT NULL,
   reason VARCHAR(255) NOT NULL,
   points INT NOT NULL,
-  created_at DATETIME NOT NULL
+  created_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE trend_point (
@@ -70,7 +70,7 @@ CREATE TABLE alert_log (
   user_name VARCHAR(64) NOT NULL,
   rule_code VARCHAR(32) NOT NULL,
   risk_level VARCHAR(16) NOT NULL,
-  hit_time DATETIME NOT NULL,
+  hit_time TIMESTAMP NOT NULL,
   status VARCHAR(16) NOT NULL
 );
 
@@ -92,7 +92,7 @@ CREATE TABLE team (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(64) NOT NULL UNIQUE,
   coach_id BIGINT NULL,
-  created_at DATETIME NOT NULL
+  created_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE team_member (
@@ -100,8 +100,8 @@ CREATE TABLE team_member (
   team_id BIGINT NOT NULL,
   user_id BIGINT NOT NULL,
   member_role VARCHAR(16) NOT NULL,
-  created_at DATETIME NOT NULL,
-  UNIQUE KEY uk_team_member_user (user_id)
+  created_at TIMESTAMP NOT NULL,
+  CONSTRAINT uk_team_member_user UNIQUE (user_id)
 );
 
 CREATE TABLE team_invite (
@@ -110,7 +110,8 @@ CREATE TABLE team_invite (
   inviter_id BIGINT NOT NULL,
   invitee_id BIGINT NOT NULL,
   status VARCHAR(16) NOT NULL,
-  created_at DATETIME NOT NULL
+  created_at TIMESTAMP NOT NULL,
+  CONSTRAINT uk_team_invite UNIQUE (team_id, invitee_id)
 );
 
 CREATE TABLE problemset_link (
@@ -119,16 +120,16 @@ CREATE TABLE problemset_link (
   title VARCHAR(128) NOT NULL,
   url VARCHAR(255) NOT NULL,
   created_by BIGINT NOT NULL,
-  created_at DATETIME NOT NULL
+  created_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE problemset_progress (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT NOT NULL,
   problemset_id BIGINT NOT NULL,
-  solved TINYINT(1) NOT NULL,
-  updated_at DATETIME NOT NULL,
-  UNIQUE KEY uk_problemset_progress_user_problemset (user_id, problemset_id)
+  solved BOOLEAN NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  CONSTRAINT uk_problemset_progress UNIQUE (user_id, problemset_id)
 );
 
 CREATE TABLE contest_link (
@@ -136,8 +137,10 @@ CREATE TABLE contest_link (
   platform VARCHAR(32) NOT NULL,
   title VARCHAR(128) NOT NULL,
   url VARCHAR(255) NOT NULL,
+  start_time TIMESTAMP NOT NULL,
+  reminder_minutes INT NOT NULL,
   created_by BIGINT NOT NULL,
-  created_at DATETIME NOT NULL
+  created_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE coach_task (
@@ -146,8 +149,8 @@ CREATE TABLE coach_task (
   team_id BIGINT NOT NULL,
   title VARCHAR(128) NOT NULL,
   description VARCHAR(255) NOT NULL,
-  deadline DATETIME NOT NULL,
-  created_at DATETIME NOT NULL
+  deadline TIMESTAMP NOT NULL,
+  created_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE coach_task_assignment (
@@ -155,6 +158,7 @@ CREATE TABLE coach_task_assignment (
   task_id BIGINT NOT NULL,
   user_id BIGINT NOT NULL,
   status VARCHAR(32) NOT NULL,
-  created_at DATETIME NOT NULL,
-  completed_at DATETIME NULL
+  created_at TIMESTAMP NOT NULL,
+  completed_at TIMESTAMP NULL,
+  CONSTRAINT uk_coach_task_assignment UNIQUE (task_id, user_id)
 );

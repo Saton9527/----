@@ -10,6 +10,7 @@ com\acmtrain\backend\dto\UpdatePlatformBindingRequest.class
 com\acmtrain\backend\repository\RecommendationRepository.class
 com\acmtrain\backend\controller\AuthController.class
 com\acmtrain\backend\dto\MyProfileResponse.class
+com\acmtrain\backend\service\StudentImportService.class
 com\acmtrain\backend\entity\ContestLinkEntity.class
 com\acmtrain\backend\service\CoachTaskService.class
 com\acmtrain\backend\dto\TeamMemberResponse.class
@@ -19,12 +20,14 @@ com\acmtrain\backend\dto\UpdateProblemsetSolvedRequest.class
 com\acmtrain\backend\config\CorsConfig.class
 com\acmtrain\backend\dto\TaskResponse.class
 com\acmtrain\backend\repository\ContestLinkRepository.class
+com\acmtrain\backend\dto\CreateStudentRequest.class
 com\acmtrain\backend\controller\CoachTaskController.class
 com\acmtrain\backend\repository\PointLogRepository.class
 com\acmtrain\backend\dto\PageResponse.class
 com\acmtrain\backend\dto\PointLogResponse.class
 com\acmtrain\backend\dto\TeamCoachRequest.class
 com\acmtrain\backend\dto\MyCoachTaskResponse.class
+com\acmtrain\backend\dto\ProblemBucketResponse.class
 com\acmtrain\backend\dto\ContestResponse.class
 com\acmtrain\backend\entity\CoachTaskEntity.class
 com\acmtrain\backend\repository\CoachTaskAssignmentRepository.class
@@ -40,6 +43,7 @@ com\acmtrain\backend\entity\CoachTaskAssignmentEntity.class
 com\acmtrain\backend\dto\TeamInviteRequest.class
 com\acmtrain\backend\entity\ProblemsetLinkEntity.class
 com\acmtrain\backend\entity\StudentInfoEntity.class
+com\acmtrain\backend\service\StudentImportService$ImportRow.class
 com\acmtrain\backend\entity\TeamInviteEntity.class
 com\acmtrain\backend\config\SwaggerConfig.class
 com\acmtrain\backend\dto\UpdateTaskProgressRequest.class
@@ -49,6 +53,7 @@ com\acmtrain\backend\dto\RecommendationResponse.class
 com\acmtrain\backend\dto\UpdateTaskStatusRequest.class
 com\acmtrain\backend\dto\CreateTaskRequest.class
 com\acmtrain\backend\controller\TeamController.class
+com\acmtrain\backend\dto\UpdateStudentRequest.class
 com\acmtrain\backend\entity\PointLogEntity.class
 com\acmtrain\backend\entity\RecommendationEntity.class
 com\acmtrain\backend\dto\ProblemsetCreateRequest.class
@@ -56,6 +61,8 @@ com\acmtrain\backend\dto\TeamResponse.class
 com\acmtrain\backend\service\TrainingQueryService.class
 com\acmtrain\backend\dto\TeamCreateRequest.class
 com\acmtrain\backend\dto\TrendPointResponse.class
+com\acmtrain\backend\dto\DashboardAnalyticsResponse.class
+com\acmtrain\backend\dto\ProblemTagResponse.class
 com\acmtrain\backend\dto\StudentResponse.class
 com\acmtrain\backend\dto\LoginRequest.class
 com\acmtrain\backend\dto\LoginResponse.class
@@ -64,6 +71,7 @@ com\acmtrain\backend\entity\TrainingTaskEntity.class
 com\acmtrain\backend\repository\TeamRepository.class
 com\acmtrain\backend\config\SecurityConfig.class
 com\acmtrain\backend\config\GlobalExceptionHandler.class
+com\acmtrain\backend\dto\StudentImportResultResponse.class
 com\acmtrain\backend\entity\RankingOverallEntity.class
 com\acmtrain\backend\dto\AlertResponse.class
 com\acmtrain\backend\entity\UserAccountEntity.class
@@ -72,7 +80,9 @@ com\acmtrain\backend\dto\CoachTaskCreateRequest.class
 com\acmtrain\backend\dto\ContestCreateRequest.class
 com\acmtrain\backend\repository\ProblemsetLinkRepository.class
 com\acmtrain\backend\config\SimpleAuthFilter.class
+com\acmtrain\backend\service\TrainingQueryService$TagSeed.class
 com\acmtrain\backend\controller\ResourceLinkController.class
+com\acmtrain\backend\dto\ProblemDetailResponse.class
 com\acmtrain\backend\repository\TeamInviteRepository.class
 com\acmtrain\backend\repository\TeamMemberRepository.class
 com\acmtrain\backend\repository\ProblemsetProgressRepository.class

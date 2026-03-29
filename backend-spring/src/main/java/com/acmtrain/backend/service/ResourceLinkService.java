@@ -19,6 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URI;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -26,6 +28,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class ResourceLinkService {
+
+    private static final DateTimeFormatter DATETIME_INPUT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final ProblemsetLinkRepository problemsetLinkRepository;
     private final ProblemsetProgressRepository problemsetProgressRepository;
@@ -113,6 +117,8 @@ public class ResourceLinkService {
         entity.setPlatform("QOJ");
         entity.setUrl(url);
         entity.setTitle(defaultTitle(request.title(), "QOJ 训练赛"));
+        entity.setStartTime(parseDateTime(request.startTime()));
+        entity.setReminderMinutes(request.reminderMinutes());
         entity.setCreatedBy(userId);
         entity.setCreatedAt(LocalDateTime.now());
 
@@ -151,6 +157,18 @@ public class ResourceLinkService {
             return uri;
         } catch (Exception ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "链接格式不正确，需要 http/https 完整地址");
+        }
+    }
+
+    private LocalDateTime parseDateTime(String input) {
+        try {
+            return LocalDateTime.parse(input, DATETIME_INPUT);
+        } catch (DateTimeParseException ex) {
+            try {
+                return LocalDateTime.parse(input);
+            } catch (DateTimeParseException ignored) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startTime 格式错误，应为 yyyy-MM-dd HH:mm");
+            }
         }
     }
 }
