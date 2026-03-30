@@ -7,8 +7,10 @@ import {
   downloadStudentImportErrorReport,
   downloadStudentImportTemplate,
   fetchStudents,
+  importStudentAtcSubmissions,
   importStudents,
   parseStudentImportErrors,
+  syncStudentOj,
   updateStudent
 } from '@/api/student';
 import type { StudentImportResult, StudentItem, StudentUpsertPayload } from '@/types/student';
@@ -23,6 +25,8 @@ const editingStudentId = ref<number | null>(null);
 const studentFormRef = ref<FormInstance>();
 const students = ref<StudentItem[]>([]);
 const importResult = ref<StudentImportResult | null>(null);
+const syncingStudentId = ref<number | null>(null);
+const importingAtcStudentId = ref<number | null>(null);
 const studentForm = reactive({
   username: '',
   password: '',
@@ -55,9 +59,16 @@ const studentFormRules: FormRules<typeof studentForm> = {
   }],
   realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
   grade: [{ required: true, message: '请输入年级', trigger: 'blur' }],
-  major: [{ required: true, message: '请输入专业', trigger: 'blur' }],
-  cfHandle: [{ required: true, message: '请输入 Codeforces 账号', trigger: 'blur' }]
+  major: [{ required: true, message: '请输入专业', trigger: 'blur' }]
 };
+
+function displayHandle(handle: string | null | undefined) {
+  return handle && handle.trim() ? handle : '无';
+}
+
+function displayRating(handle: string | null | undefined, rating: number) {
+  return handle && handle.trim() ? rating : '无';
+}
 
 async function loadStudents() {
   loading.value = true;
@@ -101,7 +112,7 @@ async function openEditStudentDialog(student: StudentItem) {
   studentForm.realName = student.realName;
   studentForm.grade = student.grade;
   studentForm.major = student.major;
-  studentForm.cfHandle = student.cfHandle;
+  studentForm.cfHandle = student.cfHandle ?? '';
   studentForm.atcHandle = student.atcHandle ?? '';
   studentForm.cfRating = student.cfRating;
   studentForm.atcRating = student.atcRating;
@@ -164,11 +175,11 @@ async function submitStudentForm() {
     realName: studentForm.realName.trim(),
     grade: studentForm.grade.trim(),
     major: studentForm.major.trim(),
-    cfHandle: studentForm.cfHandle.trim(),
+    cfHandle: studentForm.cfHandle.trim() || null,
     atcHandle: studentForm.atcHandle.trim() || null,
-    cfRating: studentForm.cfRating,
-    atcRating: studentForm.atcRating,
-    solvedCount: studentForm.solvedCount,
+    cfRating: studentForm.cfHandle.trim() ? studentForm.cfRating : 0,
+    atcRating: studentForm.atcHandle.trim() ? studentForm.atcRating : 0,
+    solvedCount: studentForm.cfHandle.trim() || studentForm.atcHandle.trim() ? studentForm.solvedCount : 0,
     totalPoints: studentForm.totalPoints
   };
 
@@ -192,6 +203,42 @@ async function submitStudentForm() {
     submittingStudent.value = false;
   }
 }
+
+async function handleSyncStudent(student: StudentItem) {
+  syncingStudentId.value = student.id;
+  try {
+    await syncStudentOj(student.id);
+    ElMessage.success(`${student.realName} 的 OJ 数据已同步`);
+    await loadStudents();
+  } finally {
+    syncingStudentId.value = null;
+  }
+}
+
+async function handleImportStudentAtc(student: StudentItem, options: UploadRequestOptions) {
+  importingAtcStudentId.value = student.id;
+  try {
+    await importStudentAtcSubmissions(student.id, options.file as File);
+    ElMessage.success(`${student.realName} 的 AtCoder 提交已导入`);
+    await loadStudents();
+    options.onSuccess?.(student);
+  } catch (error) {
+    const uploadError = {
+      name: 'UploadAjaxError',
+      message: error instanceof Error ? error.message : '导入失败',
+      status: 500,
+      method: 'post',
+      url: `/api/students/${student.id}/import-atc-submissions`
+    } as Parameters<NonNullable<UploadRequestOptions['onError']>>[0];
+    options.onError?.(uploadError);
+  } finally {
+    importingAtcStudentId.value = null;
+  }
+}
+
+function createImportStudentAtcHandler(student: StudentItem) {
+  return (options: UploadRequestOptions) => handleImportStudentAtc(student, options);
+}
 </script>
 
 <template>
@@ -205,7 +252,7 @@ async function submitStudentForm() {
     <section v-if="canImport" class="section-card glass-panel import-box">
       <div class="import-copy">
         <strong>Excel 导入学生账号</strong>
-        <p>建议先下载模板再填充。必填表头：账号、密码、姓名、年级、专业、CF账号；其余列可选。</p>
+        <p>建议先下载模板再填充。必填表头：账号、密码、姓名、年级、专业；OJ 账号列可留空。</p>
       </div>
       <div class="import-actions">
         <el-button plain type="success" @click="openCreateStudentDialog">新增学生</el-button>
@@ -256,15 +303,52 @@ async function submitStudentForm() {
         <el-table-column prop="realName" label="姓名" min-width="120" />
         <el-table-column prop="grade" label="年级" min-width="90" />
         <el-table-column prop="major" label="专业" min-width="180" />
-        <el-table-column prop="cfHandle" label="Codeforces ID" min-width="140" />
-        <el-table-column prop="atcHandle" label="AtCoder ID" min-width="130" />
-        <el-table-column prop="cfRating" label="CF 分数" min-width="100" />
-        <el-table-column prop="atcRating" label="ATC 分数" min-width="100" />
+        <el-table-column label="Codeforces ID" min-width="140">
+          <template #default="{ row }">
+            {{ displayHandle(row.cfHandle) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="AtCoder ID" min-width="130">
+          <template #default="{ row }">
+            {{ displayHandle(row.atcHandle) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="CF 分数" min-width="100">
+          <template #default="{ row }">
+            {{ displayRating(row.cfHandle, row.cfRating) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="ATC 分数" min-width="100">
+          <template #default="{ row }">
+            {{ displayRating(row.atcHandle, row.atcRating) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="solvedCount" label="做题数" min-width="90" />
         <el-table-column prop="totalPoints" label="积分" min-width="90" />
-        <el-table-column v-if="canImport" label="操作" min-width="120" fixed="right">
+        <el-table-column v-if="canImport" label="操作" min-width="220" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEditStudentDialog(row)">编辑</el-button>
+            <el-button
+              link
+              type="success"
+              :loading="syncingStudentId === row.id"
+              @click="handleSyncStudent(row)"
+            >
+              同步 OJ
+            </el-button>
+            <el-upload
+              :show-file-list="false"
+              accept=".json,application/json"
+              :http-request="createImportStudentAtcHandler(row)"
+            >
+              <el-button
+                link
+                type="warning"
+                :loading="importingAtcStudentId === row.id"
+              >
+                导入 ATC
+              </el-button>
+            </el-upload>
           </template>
         </el-table-column>
       </el-table>
@@ -289,10 +373,10 @@ async function submitStudentForm() {
             <el-input v-model="studentForm.major" />
           </el-form-item>
           <el-form-item label="Codeforces ID" prop="cfHandle">
-            <el-input v-model="studentForm.cfHandle" />
+            <el-input v-model="studentForm.cfHandle" placeholder="留空表示未绑定" />
           </el-form-item>
           <el-form-item label="AtCoder ID" prop="atcHandle">
-            <el-input v-model="studentForm.atcHandle" />
+            <el-input v-model="studentForm.atcHandle" placeholder="留空表示未绑定" />
           </el-form-item>
           <el-form-item label="CF 分数" prop="cfRating">
             <el-input-number v-model="studentForm.cfRating" :min="0" :step="50" controls-position="right" />
@@ -304,7 +388,7 @@ async function submitStudentForm() {
             <el-input-number v-model="studentForm.solvedCount" :min="0" controls-position="right" />
           </el-form-item>
           <el-form-item label="积分" prop="totalPoints">
-            <el-input-number v-model="studentForm.totalPoints" :min="0" controls-position="right" />
+            <el-input-number v-model="studentForm.totalPoints" :min="0" :step="0.1" :precision="1" controls-position="right" />
           </el-form-item>
         </div>
       </el-form>

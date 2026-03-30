@@ -21,6 +21,14 @@ public class AlertLogEntity {
     private LocalDateTime hitTime;
     @Column(nullable = false)
     private String status;
+    @Column(nullable = false, length = 500)
+    private String description;
+    @Column(name = "suspicious_problems", length = 500)
+    private String suspiciousProblems;
+    @Column(length = 500)
+    private String suggestion;
+    @Column(name = "notified_at")
+    private LocalDateTime notifiedAt;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -34,4 +42,12 @@ public class AlertLogEntity {
     public void setHitTime(LocalDateTime hitTime) { this.hitTime = hitTime; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    public String getSuspiciousProblems() { return suspiciousProblems; }
+    public void setSuspiciousProblems(String suspiciousProblems) { this.suspiciousProblems = suspiciousProblems; }
+    public String getSuggestion() { return suggestion; }
+    public void setSuggestion(String suggestion) { this.suggestion = suggestion; }
+    public LocalDateTime getNotifiedAt() { return notifiedAt; }
+    public void setNotifiedAt(LocalDateTime notifiedAt) { this.notifiedAt = notifiedAt; }
 }

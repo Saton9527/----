@@ -1,0 +1,1 @@
+function d(r){const e=r.trim(),t=e.toUpperCase().match(/^CF\s+(\d+)([A-Z]\d*)$/);if(t)return`https://codeforces.com/problemset/problem/${t[1]}/${t[2]}`;const o=e.match(/^ATC\s+([A-Za-z0-9_-]+)$/);if(o){const s=o[1].toLowerCase(),c=s.lastIndexOf("_");if(c>0)return`https://atcoder.jp/contests/${s.slice(0,c)}/tasks/${s}`}return null}export{d as r};

@@ -8,4 +8,5 @@ export interface AlertItem {
   description: string;
   suspiciousProblems: string;
   suggestion: string;
+  mailSentAt: string | null;
 }

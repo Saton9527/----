@@ -13,6 +13,7 @@ const mockContests: ContestItem[] = [
   {
     id: 1,
     platform: 'QOJ',
+    sourceType: 'MANUAL',
     title: 'QOJ 模拟训练赛 #1',
     url: 'https://qoj.ac/contest/1',
     startTime: '2026-03-30 19:00',
@@ -22,11 +23,23 @@ const mockContests: ContestItem[] = [
   },
   {
     id: 2,
-    platform: 'QOJ',
-    title: 'QOJ 模拟训练赛 #2',
-    url: 'https://qoj.ac/contest/2',
-    startTime: '2026-03-31 20:00',
-    reminderTime: '2026-03-31 18:00',
+    platform: 'Codeforces',
+    sourceType: 'OFFICIAL',
+    title: 'Codeforces Round #999',
+    url: 'https://codeforces.com/contest/1999',
+    startTime: '2026-04-01 22:35',
+    reminderTime: '2026-04-01 20:35',
+    reminderMinutes: 120,
+    status: 'UPCOMING'
+  },
+  {
+    id: 3,
+    platform: 'AtCoder',
+    sourceType: 'OFFICIAL',
+    title: 'AtCoder Beginner Contest 452',
+    url: 'https://atcoder.jp/contests/abc452',
+    startTime: '2026-04-04 20:00',
+    reminderTime: '2026-04-04 18:00',
     reminderMinutes: 120,
     status: 'UPCOMING'
   }
@@ -44,6 +57,7 @@ export async function createContest(payload: ContestCreatePayload): Promise<Cont
     const item: ContestItem = {
       id: mockContests.length ? Math.max(...mockContests.map((contest) => contest.id)) + 1 : 1,
       platform: 'QOJ',
+      sourceType: 'MANUAL',
       title: payload.title?.trim() || 'QOJ 训练赛',
       url: payload.url,
       startTime: payload.startTime,
@@ -56,6 +70,14 @@ export async function createContest(payload: ContestCreatePayload): Promise<Cont
   }
 
   return (await http.post('/api/contests', payload)) as unknown as ContestItem;
+}
+
+export async function syncOfficialContests(): Promise<ContestItem[]> {
+  if (isMockEnabled) {
+    return mockResolve(mockContests, 500);
+  }
+
+  return (await http.post('/api/contests/sync-official')) as unknown as ContestItem[];
 }
 
 function shiftMinutes(dateTime: string, offsetMinutes: number): string {

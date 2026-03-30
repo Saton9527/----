@@ -1,5 +1,7 @@
 package com.acmtrain.backend.dto;
 
+import java.math.BigDecimal;
+
 public record StudentResponse(
         Long id,
         Long userId,
@@ -12,6 +14,6 @@ public record StudentResponse(
         Integer cfRating,
         Integer atcRating,
         Integer solvedCount,
-        Integer totalPoints
+        BigDecimal totalPoints
 ) {
 }

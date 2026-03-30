@@ -55,4 +55,9 @@ public class ResourceLinkController {
     ) {
         return resourceLinkService.createContest(userId, request);
     }
+
+    @PostMapping("/contests/sync-official")
+    public List<ContestResponse> syncOfficialContests(@RequestAttribute("userId") Long userId) {
+        return resourceLinkService.syncOfficialContests(userId);
+    }
 }

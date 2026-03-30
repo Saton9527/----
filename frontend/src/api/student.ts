@@ -11,12 +11,12 @@ const mockStudents: StudentItem[] = [
     realName: '演示学生A',
     grade: '2023',
     major: '计算机科学与技术',
-    cfHandle: 'student01_cf',
-    atcHandle: 'student01_atc',
-    cfRating: 1620,
-    atcRating: 1450,
-    solvedCount: 161,
-    totalPoints: 248
+    cfHandle: null,
+    atcHandle: null,
+    cfRating: 0,
+    atcRating: 0,
+    solvedCount: 0,
+    totalPoints: 24.0
   },
   {
     id: 2,
@@ -25,12 +25,12 @@ const mockStudents: StudentItem[] = [
     realName: '演示学生B',
     grade: '2023',
     major: '软件工程',
-    cfHandle: 'student02_cf',
-    atcHandle: 'student02_atc',
-    cfRating: 1540,
-    atcRating: 1410,
+    cfHandle: 'Benq',
+    atcHandle: 'Benq',
+    cfRating: 3792,
+    atcRating: 3658,
     solvedCount: 145,
-    totalPoints: 221
+    totalPoints: 221.0
   },
   {
     id: 3,
@@ -39,12 +39,12 @@ const mockStudents: StudentItem[] = [
     realName: '演示学生C',
     grade: '2024',
     major: '数据科学与大数据技术',
-    cfHandle: 'student03_cf',
-    atcHandle: 'student03_atc',
-    cfRating: 1490,
-    atcRating: 1330,
+    cfHandle: 'ecnerwala',
+    atcHandle: 'ecnerwala',
+    cfRating: 3696,
+    atcRating: 3619,
     solvedCount: 123,
-    totalPoints: 198
+    totalPoints: 198.0
   }
 ];
 
@@ -88,7 +88,7 @@ export async function createStudent(payload: StudentUpsertPayload): Promise<Stud
       realName: payload.realName,
       grade: payload.grade,
       major: payload.major,
-      cfHandle: payload.cfHandle,
+      cfHandle: payload.cfHandle ?? null,
       atcHandle: payload.atcHandle,
       cfRating: payload.cfRating,
       atcRating: payload.atcRating,
@@ -114,7 +114,7 @@ export async function updateStudent(id: number, payload: StudentUpsertPayload): 
       realName: payload.realName,
       grade: payload.grade,
       major: payload.major,
-      cfHandle: payload.cfHandle,
+      cfHandle: payload.cfHandle ?? null,
       atcHandle: payload.atcHandle,
       cfRating: payload.cfRating,
       atcRating: payload.atcRating,
@@ -125,6 +125,47 @@ export async function updateStudent(id: number, payload: StudentUpsertPayload): 
   }
 
   return (await http.put(`/api/students/${id}`, payload)) as unknown as StudentItem;
+}
+
+export async function syncStudentOj(id: number): Promise<StudentItem> {
+  if (isMockEnabled) {
+    const target = mockStudents.find((item) => item.id === id);
+    if (!target) {
+      throw new Error('学生不存在');
+    }
+    if (!target.cfHandle && !target.atcHandle) {
+      return mockResolve(target, 600);
+    }
+    target.cfRating += 12;
+    target.atcRating += 10;
+    target.solvedCount += 2;
+    target.totalPoints += 2.2;
+    return mockResolve(target, 600);
+  }
+
+  return (await http.post(`/api/students/${id}/sync-oj`, null, {
+    timeout: 180000
+  })) as unknown as StudentItem;
+}
+
+export async function importStudentAtcSubmissions(id: number, file: File): Promise<StudentItem> {
+  if (isMockEnabled) {
+    const target = mockStudents.find((item) => item.id === id);
+    if (!target) {
+      throw new Error('学生不存在');
+    }
+    target.solvedCount += 4;
+    target.totalPoints += 1.8;
+    return mockResolve(target, 600);
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+  return (await http.post(`/api/students/${id}/import-atc-submissions`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })) as unknown as StudentItem;
 }
 
 export async function downloadStudentImportTemplate(): Promise<void> {

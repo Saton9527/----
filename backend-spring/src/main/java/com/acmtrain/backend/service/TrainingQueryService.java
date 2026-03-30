@@ -1,6 +1,7 @@
 package com.acmtrain.backend.service;
 
 import com.acmtrain.backend.dto.*;
+import com.acmtrain.backend.entity.OjSolvedProblemEntity;
 import com.acmtrain.backend.entity.RankingOverallEntity;
 import com.acmtrain.backend.entity.StudentInfoEntity;
 import com.acmtrain.backend.entity.TrainingTaskEntity;
@@ -19,7 +20,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -27,6 +32,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.IntStream;
@@ -41,47 +47,13 @@ public class TrainingQueryService {
         SOLVED_COUNT
     }
 
-    private record ProblemSeed(String code, String title, int rating) {
-    }
-
-    private record TagSeed(String name, double weight) {
+    private record ProblemSeed(String code, String title, int rating, String tag, String platform) {
     }
 
     private static final Logger logger = LoggerFactory.getLogger(TrainingQueryService.class);
     private static final DateTimeFormatter DATETIME_INPUT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-
-    private static final List<ProblemSeed> PROBLEM_BANK = List.of(
-            new ProblemSeed("CF 1607A", "Linear Keyboard", 900),
-            new ProblemSeed("CF 71A", "Way Too Long Words", 800),
-            new ProblemSeed("CF 977A", "Wrong Subtraction", 800),
-            new ProblemSeed("CF 266A", "Stones on the Table", 800),
-            new ProblemSeed("CF 236A", "Boy or Girl", 900),
-            new ProblemSeed("CF 112A", "Petya and Strings", 900),
-            new ProblemSeed("CF 281A", "Word Capitalization", 800),
-            new ProblemSeed("CF 59A", "Word", 1000),
-            new ProblemSeed("CF 230A", "Dragons", 1200),
-            new ProblemSeed("CF 510A", "Fox And Snake", 1200),
-            new ProblemSeed("CF 43A", "Football", 1200),
-            new ProblemSeed("CF 158A", "Next Round", 1200),
-            new ProblemSeed("CF 263A", "Beautiful Matrix", 1200),
-            new ProblemSeed("CF 580A", "Kefa and First Steps", 1200),
-            new ProblemSeed("CF 339A", "Helpful Maths", 1300),
-            new ProblemSeed("CF 271A", "Beautiful Year", 1300),
-            new ProblemSeed("CF 469A", "I Wanna Be the Guy", 1300),
-            new ProblemSeed("CF 1851C", "Tiles Comeback", 1500),
-            new ProblemSeed("CF 1399A", "Remove Smallest", 1500),
-            new ProblemSeed("CF 1472B", "Fair Division", 1500),
-            new ProblemSeed("CF 1714A", "Everyone Loves to Sleep", 1600),
-            new ProblemSeed("CF 1749C", "Number Game", 1700),
-            new ProblemSeed("CF 1901B", "Chip and Ribbon", 1700),
-            new ProblemSeed("CF 1843C", "Sum in Binary Tree", 1800),
-            new ProblemSeed("CF 1899D", "Yarik and Musical Notes", 1900),
-            new ProblemSeed("CF 1731B", "Kill Demodogs", 2000),
-            new ProblemSeed("CF 1742E", "Scuza", 2000),
-            new ProblemSeed("CF 1669F", "Eating Candies", 2100),
-            new ProblemSeed("CF 1791C", "Prepend and Append", 2200),
-            new ProblemSeed("CF 1703F", "Yet Another Problem About Pairs", 2300)
-    );
+    private static final DateTimeFormatter DATE_OUTPUT = DateTimeFormatter.ofPattern("MM-dd");
+    private static final ZoneId SHANGHAI_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final TrainingTaskRepository trainingTaskRepository;
     private final RankingOverallRepository rankingOverallRepository;
@@ -91,6 +63,9 @@ public class TrainingQueryService {
     private final AlertLogRepository alertLogRepository;
     private final StudentInfoRepository studentInfoRepository;
     private final UserAccountRepository userAccountRepository;
+    private final OjSolvedProblemRepository ojSolvedProblemRepository;
+    private final CodeforcesCatalogService codeforcesCatalogService;
+    private final OjAccountValidationService ojAccountValidationService;
 
     public TrainingQueryService(
             TrainingTaskRepository trainingTaskRepository,
@@ -100,7 +75,10 @@ public class TrainingQueryService {
             RecommendationRepository recommendationRepository,
             AlertLogRepository alertLogRepository,
             StudentInfoRepository studentInfoRepository,
-            UserAccountRepository userAccountRepository
+            UserAccountRepository userAccountRepository,
+            OjSolvedProblemRepository ojSolvedProblemRepository,
+            CodeforcesCatalogService codeforcesCatalogService,
+            OjAccountValidationService ojAccountValidationService
     ) {
         this.trainingTaskRepository = trainingTaskRepository;
         this.rankingOverallRepository = rankingOverallRepository;
@@ -110,6 +88,9 @@ public class TrainingQueryService {
         this.alertLogRepository = alertLogRepository;
         this.studentInfoRepository = studentInfoRepository;
         this.userAccountRepository = userAccountRepository;
+        this.ojSolvedProblemRepository = ojSolvedProblemRepository;
+        this.codeforcesCatalogService = codeforcesCatalogService;
+        this.ojAccountValidationService = ojAccountValidationService;
     }
 
     @Cacheable(value = "tasks", key = "#status + '_' + #page + '_' + #size")
@@ -210,10 +191,10 @@ public class TrainingQueryService {
         return slicePage(allRows, page, size);
     }
 
-    @Cacheable(value = "points", key = "#page + '_' + #size")
-    public PageResponse<PointLogResponse> points(int page, int size) {
+    @Cacheable(value = "points", key = "#userId + '_' + #page + '_' + #size")
+    public PageResponse<PointLogResponse> points(Long userId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<?> entityPage = pointLogRepository.findAll(pageable);
+        Page<?> entityPage = pointLogRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId, pageable);
 
         List<PointLogResponse> content = entityPage.stream()
                 .map(e -> DtoMapper.toPointLogResponse((com.acmtrain.backend.entity.PointLogEntity) e))
@@ -230,22 +211,53 @@ public class TrainingQueryService {
         );
     }
 
-    @Cacheable(value = "trend")
-    public List<TrendPointResponse> trend() {
-        return trendPointRepository.findAllByOrderByIdAsc().stream()
-                .map(DtoMapper::toTrendPointResponse)
+    @Cacheable(value = "trend", key = "#userId")
+    public List<TrendPointResponse> trend(Long userId) {
+        UserAccountEntity user = userAccountRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在"));
+
+        LocalDate today = LocalDate.now(SHANGHAI_ZONE);
+        LocalDate startDate = today.minusDays(6);
+        LocalDateTime startTime = startDate.atStartOfDay();
+        LocalDateTime endTime = today.plusDays(1).atStartOfDay();
+
+        List<OjSolvedProblemEntity> solvedProblems = "coach".equalsIgnoreCase(user.getRole())
+                ? ojSolvedProblemRepository.findAllByAcceptedAtBetweenOrderByAcceptedAtAsc(startTime, endTime)
+                : ojSolvedProblemRepository.findAllByUserIdAndAcceptedAtBetweenOrderByAcceptedAtAsc(userId, startTime, endTime);
+
+        Map<LocalDate, Integer> solvedByDate = solvedProblems.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        item -> item.getAcceptedAt().toLocalDate(),
+                        item -> 1,
+                        Integer::sum
+                ));
+
+        return startDate.datesUntil(today.plusDays(1))
+                .map(date -> new TrendPointResponse(
+                        date.format(DATE_OUTPUT),
+                        solvedByDate.getOrDefault(date, 0)
+                ))
                 .toList();
     }
 
     public DashboardAnalyticsResponse dashboardAnalytics(Long userId) {
         StudentInfoEntity student = studentInfoRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "当前用户暂无学生档案"));
+        List<OjSolvedProblemEntity> solvedProblems = ojSolvedProblemRepository.findAllByUserIdOrderByAcceptedAtDesc(userId);
 
-        int totalSolved = student.getSolvedCount() == null ? 0 : student.getSolvedCount();
+        int totalSolved = solvedProblems.isEmpty()
+                ? (student.getSolvedCount() == null ? 0 : student.getSolvedCount())
+                : solvedProblems.size();
         int hiddenRating = computeHiddenRating(student);
-        List<ProblemBucketResponse> buckets = buildProblemBuckets(totalSolved, hiddenRating);
-        List<ProblemTagResponse> tags = buildProblemTags(totalSolved, hiddenRating);
-        List<ProblemDetailResponse> recentSolved = buildProblemDetails(hiddenRating, tags);
+        List<ProblemBucketResponse> buckets = solvedProblems.isEmpty()
+                ? buildProblemBuckets(totalSolved, hiddenRating)
+                : buildProblemBuckets(solvedProblems);
+        List<ProblemTagResponse> tags = solvedProblems.isEmpty()
+                ? buildProblemTags(totalSolved, hiddenRating)
+                : buildProblemTags(solvedProblems);
+        List<ProblemDetailResponse> recentSolved = solvedProblems.isEmpty()
+                ? buildProblemDetails(hiddenRating, tags)
+                : buildProblemDetails(solvedProblems);
         return new DashboardAnalyticsResponse(totalSolved, hiddenRating, buckets, tags, recentSolved);
     }
 
@@ -264,11 +276,12 @@ public class TrainingQueryService {
         StudentInfoEntity student = studentInfoRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "当前用户暂无学生档案"));
 
-        String cfHandle = request.cfHandle().trim();
-        String atcHandle = request.atcHandle() == null ? null : request.atcHandle().trim();
+        String cfHandle = normalizeOptional(request.cfHandle());
+        String atcHandle = normalizeOptional(request.atcHandle());
+        validateBoundHandles(cfHandle, atcHandle);
 
         student.setCfHandle(cfHandle);
-        student.setAtcHandle(atcHandle == null || atcHandle.isEmpty() ? null : atcHandle);
+        student.setAtcHandle(atcHandle);
         StudentInfoEntity updated = studentInfoRepository.save(student);
 
         UserAccountEntity user = userAccountRepository.findById(userId)
@@ -301,6 +314,54 @@ public class TrainingQueryService {
 
         List<RecommendationResponse> all = buildAlgorithmRecommendations(student);
         return slicePage(all, page, size);
+    }
+
+    @Cacheable(value = "problems", key = "#userId + '_' + #keyword + '_' + #minRating + '_' + #maxRating + '_' + #solved + '_' + #page + '_' + #size")
+    public PageResponse<ProblemCatalogResponse> problems(
+            Long userId,
+            String keyword,
+            Integer minRating,
+            Integer maxRating,
+            Boolean solved,
+            int page,
+            int size
+    ) {
+        validatePage(page, size);
+        if (minRating != null && maxRating != null && minRating > maxRating) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating 不能大于 maxRating");
+        }
+
+        StudentInfoEntity student = studentInfoRepository.findByUserId(userId).orElse(null);
+        int hiddenRating = student == null ? 0 : computeHiddenRating(student);
+        List<OjSolvedProblemEntity> solvedProblems = ojSolvedProblemRepository.findAllByUserIdOrderByAcceptedAtDesc(userId);
+        boolean hasRealSolvedData = !solvedProblems.isEmpty();
+        Set<String> solvedCodes = solvedProblems.stream()
+                .map(OjSolvedProblemEntity::getProblemCode)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> recommendedCodes = student == null
+                ? Set.of()
+                : buildAlgorithmRecommendations(student).stream()
+                .map(RecommendationResponse::problemCode)
+                .collect(java.util.stream.Collectors.toSet());
+        String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+
+        List<ProblemCatalogResponse> rows = mergeProblemCatalog(student, hiddenRating, solvedProblems, hasRealSolvedData, solvedCodes, recommendedCodes).stream()
+                .filter(item -> normalizedKeyword.isBlank()
+                        || item.problemCode().toLowerCase(Locale.ROOT).contains(normalizedKeyword)
+                        || item.title().toLowerCase(Locale.ROOT).contains(normalizedKeyword)
+                        || item.tag().toLowerCase(Locale.ROOT).contains(normalizedKeyword)
+                        || item.platform().toLowerCase(Locale.ROOT).contains(normalizedKeyword))
+                .filter(item -> minRating == null || item.rating() >= minRating)
+                .filter(item -> maxRating == null || item.rating() <= maxRating)
+                .filter(item -> solved == null || item.solved() == solved)
+                .sorted(Comparator
+                        .comparing(ProblemCatalogResponse::solved, Comparator.reverseOrder())
+                        .thenComparing(ProblemCatalogResponse::recommended, Comparator.reverseOrder())
+                        .thenComparing(ProblemCatalogResponse::rating)
+                        .thenComparing(ProblemCatalogResponse::problemCode))
+                .toList();
+
+        return slicePage(rows, page, size);
     }
 
     @Cacheable(value = "alerts", key = "#page + '_' + #size")
@@ -397,8 +458,24 @@ public class TrainingQueryService {
         return toStudentResponse(savedStudent, savedUser);
     }
 
+    private List<ProblemSeed> loadCodeforcesProblemSeeds() {
+        return codeforcesCatalogService.loadProblems().stream()
+                .filter(problem -> problem.rating() > 0)
+                .map(problem -> new ProblemSeed(
+                        problem.problemCode(),
+                        problem.title(),
+                        problem.rating(),
+                        normalizeTag(problem.primaryTag()),
+                        "Codeforces"
+                ))
+                .toList();
+    }
+
     private List<RecommendationResponse> buildAlgorithmRecommendations(StudentInfoEntity student) {
         int hiddenRating = computeHiddenRating(student);
+        Set<String> solvedCodes = ojSolvedProblemRepository.findAllByUserIdOrderByAcceptedAtDesc(student.getUserId()).stream()
+                .map(OjSolvedProblemEntity::getProblemCode)
+                .collect(java.util.stream.Collectors.toSet());
 
         int expectedSolved = Math.max(60, student.getCfRating() / 12);
         double solvedRatio = expectedSolved == 0 ? 1.0 : student.getSolvedCount() * 1.0 / expectedSolved;
@@ -425,7 +502,7 @@ public class TrainingQueryService {
 
         Set<String> usedCodes = new HashSet<>();
         return IntStream.range(0, targets.length)
-                .mapToObj(index -> buildLevelRecommendation(index + 1L, hiddenRating, targets[index], profileReason, usedCodes))
+                .mapToObj(index -> buildLevelRecommendation(index + 1L, hiddenRating, targets[index], profileReason, usedCodes, solvedCodes))
                 .toList();
     }
 
@@ -434,14 +511,20 @@ public class TrainingQueryService {
             int hiddenRating,
             int targetRating,
             String profileReason,
-            Set<String> usedCodes
+            Set<String> usedCodes,
+            Set<String> solvedCodes
     ) {
-        ProblemSeed selected = PROBLEM_BANK.stream()
+        List<ProblemSeed> catalog = loadCodeforcesProblemSeeds();
+        ProblemSeed selected = catalog.stream()
                 .filter(seed -> !usedCodes.contains(seed.code()))
+                .filter(seed -> !solvedCodes.contains(seed.code()))
                 .min(Comparator.comparingInt(seed -> Math.abs(seed.rating() - targetRating)))
-                .orElseGet(() -> PROBLEM_BANK.stream()
+                .orElseGet(() -> catalog.stream()
+                        .filter(seed -> !usedCodes.contains(seed.code()))
                         .min(Comparator.comparingInt(seed -> Math.abs(seed.rating() - targetRating)))
-                        .orElseThrow());
+                        .orElseGet(() -> catalog.stream()
+                                .min(Comparator.comparingInt(seed -> Math.abs(seed.rating() - targetRating)))
+                                .orElseThrow()));
 
         usedCodes.add(selected.code());
         String level = resolveLevel(hiddenRating, targetRating);
@@ -522,29 +605,157 @@ public class TrainingQueryService {
     }
 
     private List<ProblemDetailResponse> buildProblemDetails(int hiddenRating, List<ProblemTagResponse> tags) {
-        List<TagSeed> weightedTags = tags.stream()
-                .map(tag -> new TagSeed(tag.tag(), tag.count()))
-                .toList();
-
-        return PROBLEM_BANK.stream()
+        return loadCodeforcesProblemSeeds().stream()
                 .sorted(Comparator.comparingInt(seed -> Math.abs(seed.rating() - hiddenRating)))
                 .limit(12)
                 .map(seed -> new ProblemDetailResponse(
                         seed.code(),
                         seed.title(),
                         seed.rating(),
-                        pickTagForRating(seed.rating(), weightedTags),
+                        seed.tag(),
                         resolveBucketLabel(seed.rating())
                 ))
                 .toList();
     }
 
-    private String pickTagForRating(int rating, List<TagSeed> weightedTags) {
-        if (weightedTags.isEmpty()) {
-            return "Implementation";
+    private List<ProblemDetailResponse> buildProblemDetails(List<OjSolvedProblemEntity> solvedProblems) {
+        return solvedProblems.stream()
+                .sorted(Comparator.comparing(OjSolvedProblemEntity::getAcceptedAt).reversed())
+                .limit(12)
+                .map(problem -> new ProblemDetailResponse(
+                        problem.getProblemCode(),
+                        problem.getTitle(),
+                        problem.getRating() == null ? 0 : problem.getRating(),
+                        normalizeTag(problem.getTag()),
+                        resolveBucketLabel(problem.getRating() == null ? 0 : problem.getRating())
+                ))
+                .toList();
+    }
+
+    private List<ProblemBucketResponse> buildProblemBuckets(List<OjSolvedProblemEntity> solvedProblems) {
+        List<String> labels = List.of("800-1199", "1200-1399", "1400-1599", "1600-1899", "1900+");
+        int total = solvedProblems.size();
+        List<ProblemBucketResponse> buckets = new ArrayList<>();
+        for (String label : labels) {
+            int count = (int) solvedProblems.stream()
+                    .filter(problem -> label.equals(resolveBucketLabel(problem.getRating() == null ? 0 : problem.getRating())))
+                    .count();
+            int percentage = total == 0 ? 0 : (int) Math.round(count * 100.0 / total);
+            buckets.add(new ProblemBucketResponse(label, count, percentage));
         }
-        int index = Math.abs(rating / 100) % weightedTags.size();
-        return weightedTags.get(index).name();
+        return buckets;
+    }
+
+    private List<ProblemTagResponse> buildProblemTags(List<OjSolvedProblemEntity> solvedProblems) {
+        return solvedProblems.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        problem -> normalizeTag(problem.getTag()),
+                        java.util.stream.Collectors.counting()
+                ))
+                .entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed().thenComparing(Map.Entry::getKey))
+                .limit(5)
+                .map(entry -> new ProblemTagResponse(entry.getKey(), entry.getValue().intValue()))
+                .toList();
+    }
+
+    private List<ProblemCatalogResponse> mergeProblemCatalog(
+            StudentInfoEntity student,
+            int hiddenRating,
+            List<OjSolvedProblemEntity> solvedProblems,
+            boolean hasRealSolvedData,
+            Set<String> solvedCodes,
+            Set<String> recommendedCodes
+    ) {
+        List<ProblemCatalogResponse> rows = new ArrayList<>();
+        Set<String> emittedCodes = new HashSet<>();
+
+        for (OjSolvedProblemEntity problem : solvedProblems) {
+            if (!emittedCodes.add(problem.getProblemCode())) {
+                continue;
+            }
+            int rating = problem.getRating() == null ? 0 : problem.getRating();
+            rows.add(new ProblemCatalogResponse(
+                    (long) rows.size() + 1,
+                    problem.getProblemCode(),
+                    problem.getTitle(),
+                    rating,
+                    normalizeTag(problem.getTag()),
+                    problem.getPlatform(),
+                    resolveBucketLabel(rating),
+                    true,
+                    recommendedCodes.contains(problem.getProblemCode())
+            ));
+        }
+
+        List<ProblemSeed> catalog = loadCodeforcesProblemSeeds();
+        IntStream.range(0, catalog.size())
+                .mapToObj(index -> toProblemCatalogResponse(index, catalog.get(index), student, hiddenRating, recommendedCodes, hasRealSolvedData, solvedCodes))
+                .filter(item -> emittedCodes.add(item.problemCode()))
+                .forEach(rows::add);
+
+        return IntStream.range(0, rows.size())
+                .mapToObj(index -> new ProblemCatalogResponse(
+                        (long) index + 1,
+                        rows.get(index).problemCode(),
+                        rows.get(index).title(),
+                        rows.get(index).rating(),
+                        rows.get(index).tag(),
+                        rows.get(index).platform(),
+                        rows.get(index).bucketLabel(),
+                        rows.get(index).solved(),
+                        rows.get(index).recommended()
+                ))
+                .toList();
+    }
+
+    private String normalizeTag(String tag) {
+        return tag == null || tag.isBlank() ? "Implementation" : tag;
+    }
+
+    private ProblemCatalogResponse toProblemCatalogResponse(
+            int index,
+            ProblemSeed seed,
+            StudentInfoEntity student,
+            int hiddenRating,
+            Set<String> recommendedCodes,
+            boolean hasRealSolvedData,
+            Set<String> solvedCodes
+    ) {
+        boolean solved = student != null && (hasRealSolvedData
+                ? solvedCodes.contains(seed.code())
+                : estimateSolved(student, seed, hiddenRating));
+        return new ProblemCatalogResponse(
+                (long) index + 1,
+                seed.code(),
+                seed.title(),
+                seed.rating(),
+                seed.tag(),
+                seed.platform(),
+                resolveBucketLabel(seed.rating()),
+                solved,
+                recommendedCodes.contains(seed.code())
+        );
+    }
+
+    private boolean estimateSolved(StudentInfoEntity student, ProblemSeed seed, int hiddenRating) {
+        int solvedCount = student.getSolvedCount() == null ? 0 : student.getSolvedCount();
+        int delta = hiddenRating - seed.rating();
+        int hash = Math.floorMod(seed.code().hashCode(), 100);
+
+        if (delta >= 320) {
+            return true;
+        }
+        if (delta >= 180) {
+            return hash < 82;
+        }
+        if (delta >= 60) {
+            return hash < 56;
+        }
+        if (delta >= -80) {
+            return solvedCount >= 80 && hash < 28;
+        }
+        return false;
     }
 
     private String resolveBucketLabel(int rating) {
@@ -738,18 +949,30 @@ public class TrainingQueryService {
             Integer cfRating,
             Integer atcRating,
             Integer solvedCount,
-            Integer totalPoints
+            BigDecimal totalPoints
     ) {
+        String normalizedCfHandle = normalizeOptional(cfHandle);
+        String normalizedAtcHandle = normalizeOptional(atcHandle);
+        validateBoundHandles(normalizedCfHandle, normalizedAtcHandle);
         student.setUserId(userId);
         student.setRealName(normalizeRequired(realName, "realName"));
         student.setGrade(normalizeRequired(grade, "grade"));
         student.setMajor(normalizeRequired(major, "major"));
-        student.setCfHandle(normalizeRequired(cfHandle, "cfHandle"));
-        student.setAtcHandle(normalizeOptional(atcHandle));
+        student.setCfHandle(normalizedCfHandle);
+        student.setAtcHandle(normalizedAtcHandle);
         student.setCfRating(defaultNumber(cfRating));
         student.setAtcRating(defaultNumber(atcRating));
         student.setSolvedCount(defaultNumber(solvedCount));
-        student.setTotalPoints(defaultNumber(totalPoints));
+        student.setTotalPoints(defaultPoints(totalPoints));
+    }
+
+    private void validateBoundHandles(String cfHandle, String atcHandle) {
+        if (cfHandle != null && !cfHandle.isBlank()) {
+            ojAccountValidationService.validateCodeforcesHandle(cfHandle);
+        }
+        if (atcHandle != null && !atcHandle.isBlank()) {
+            ojAccountValidationService.validateAtCoderHandle(atcHandle);
+        }
     }
 
     private String normalizeRequired(String value, String fieldName) {
@@ -765,6 +988,10 @@ public class TrainingQueryService {
 
     private Integer defaultNumber(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private BigDecimal defaultPoints(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO.setScale(1, RoundingMode.HALF_UP) : value.setScale(1, RoundingMode.HALF_UP);
     }
 
     private LocalDateTime parseDateTime(String input) {

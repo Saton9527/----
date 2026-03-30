@@ -2,6 +2,8 @@ package com.acmtrain.backend.entity;
 
 import jakarta.persistence.*;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "student_info")
 public class StudentInfoEntity {
@@ -17,7 +19,7 @@ public class StudentInfoEntity {
     private String grade;
     @Column(nullable = false)
     private String major;
-    @Column(name = "cf_handle", nullable = false)
+    @Column(name = "cf_handle")
     private String cfHandle;
     @Column(name = "atc_handle")
     private String atcHandle;
@@ -28,7 +30,7 @@ public class StudentInfoEntity {
     @Column(name = "solved_count", nullable = false)
     private Integer solvedCount;
     @Column(name = "total_points", nullable = false)
-    private Integer totalPoints;
+    private BigDecimal totalPoints;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -50,6 +52,6 @@ public class StudentInfoEntity {
     public void setAtcRating(Integer atcRating) { this.atcRating = atcRating; }
     public Integer getSolvedCount() { return solvedCount; }
     public void setSolvedCount(Integer solvedCount) { this.solvedCount = solvedCount; }
-    public Integer getTotalPoints() { return totalPoints; }
-    public void setTotalPoints(Integer totalPoints) { this.totalPoints = totalPoints; }
+    public BigDecimal getTotalPoints() { return totalPoints; }
+    public void setTotalPoints(BigDecimal totalPoints) { this.totalPoints = totalPoints; }
 }

@@ -38,6 +38,11 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column prop="hitTime" label="触发时间" min-width="180" />
         <el-table-column prop="status" label="状态" min-width="100" />
+        <el-table-column label="邮件发送" min-width="160">
+          <template #default="{ row }">
+            {{ row.mailSentAt || '未发送' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="description" label="触发说明" min-width="240" />
         <el-table-column prop="suspiciousProblems" label="可疑题目" min-width="220" />
         <el-table-column prop="suggestion" label="处理建议" min-width="260" />

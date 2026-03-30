@@ -29,7 +29,39 @@ spring:
     console:
       enabled: true
       path: /h2-console
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 logging:
   level:
     org.hibernate.SQL: warn
+
+acm:
+  sync:
+    scheduler-enabled: false
+    cron: "0 0 */6 * * *"
+  contest:
+    sync-enabled: false
+    sync-cron: "0 0 */4 * * *"
+    reminder-enabled: false
+    reminder-cron: "0 */10 * * * *"
+    cf-reminder-minutes: 120
+    atc-reminder-minutes: 120
+    mail:
+      from: ${CONTEST_MAIL_FROM:${MAIL_FROM:no-reply@acmtrain.local}}
+      to: ${CONTEST_MAIL_TO:${ALERT_MAIL_TO:}}
+  alert:
+    mail:
+      enabled: false
+      cron: "0 */10 * * * *"
+      from: ${MAIL_FROM:no-reply@acmtrain.local}
+      to: ${ALERT_MAIL_TO:}

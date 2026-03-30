@@ -4,10 +4,10 @@ import { unwrapList } from './utils';
 import type { RankingItem, RankingMetric } from '@/types/ranking';
 
 const mockRanking: RankingItem[] = [
-  { rankNo: 1, userName: '演示学生A', cfRating: 1620, atcRating: 1450, totalPoints: 248, solvedCount: 161, streakDays: 9 },
-  { rankNo: 2, userName: '演示学生B', cfRating: 1540, atcRating: 1410, totalPoints: 221, solvedCount: 145, streakDays: 7 },
-  { rankNo: 3, userName: '演示学生C', cfRating: 1490, atcRating: 1330, totalPoints: 198, solvedCount: 123, streakDays: 5 },
-  { rankNo: 4, userName: '演示用户', cfRating: 1360, atcRating: 1290, totalPoints: 186, solvedCount: 98, streakDays: 6 }
+  { rankNo: 1, userName: '演示学生A', cfRating: 1620, atcRating: 1450, totalPoints: 248.0, solvedCount: 161, streakDays: 9 },
+  { rankNo: 2, userName: '演示学生B', cfRating: 1540, atcRating: 1410, totalPoints: 221.0, solvedCount: 145, streakDays: 7 },
+  { rankNo: 3, userName: '演示学生C', cfRating: 1490, atcRating: 1330, totalPoints: 198.0, solvedCount: 123, streakDays: 5 },
+  { rankNo: 4, userName: '演示用户', cfRating: 1360, atcRating: 1290, totalPoints: 186.0, solvedCount: 98, streakDays: 6 }
 ];
 
 function sortByMetric(rows: RankingItem[], metric: RankingMetric): RankingItem[] {

@@ -1,14 +1,23 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
+import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus';
 import * as echarts from 'echarts';
 import { fetchDashboardAnalytics, fetchTrend, type DashboardAnalytics, type TrendPoint } from '@/api/dashboard';
 import { fetchContests } from '@/api/contest';
-import { fetchMyProfile, updatePlatformBinding } from '@/api/profile';
+import {
+  fetchMyContactEmail,
+  fetchMyContestHistory,
+  fetchMyProfile,
+  importMyAtcSubmissions,
+  syncMyOjProfile,
+  updateMyContactEmail,
+  updatePlatformBinding
+} from '@/api/profile';
 import { fetchCoachTeams, fetchMyTeam, inviteTeamMember } from '@/api/team';
 import { useAuthStore } from '@/store/auth';
 import { resolveProblemUrl } from '@/utils/problem-link';
 import type { ContestItem } from '@/types/contest';
+import type { OjContestHistoryItem } from '@/types/profile';
 import type { MyProfile } from '@/types/profile';
 import type { TeamInfo } from '@/types/team';
 
@@ -19,13 +28,23 @@ const trendChartRef = ref<HTMLDivElement>();
 const pieChartRef = ref<HTMLDivElement>();
 const profile = ref<MyProfile | null>(null);
 const contests = ref<ContestItem[]>([]);
+const contestHistory = ref<OjContestHistoryItem[]>([]);
 const trendData = ref<TrendPoint[]>([]);
 const analytics = ref<DashboardAnalytics | null>(null);
 const profileLoading = ref(false);
+const syncingOj = ref(false);
+const importingAtc = ref(false);
 const myTeam = ref<TeamInfo | null>(null);
 const coachTeams = ref<TeamInfo[]>([]);
 const inviteDialogVisible = ref(false);
 const inviteDialogUsername = ref('');
+const contactEmail = ref<string | null>(null);
+const contactEmailDialogVisible = ref(false);
+const contactEmailSubmitting = ref(false);
+const contactEmailFormRef = ref<FormInstance>();
+const contactEmailForm = reactive({
+  email: ''
+});
 
 const bindingDialogVisible = ref(false);
 const bindingSubmitting = ref(false);
@@ -35,8 +54,29 @@ const bindingForm = reactive({
   atcHandle: ''
 });
 
-const bindingRules: FormRules<typeof bindingForm> = {
-  cfHandle: [{ required: true, message: '请输入 Codeforces 账号', trigger: 'blur' }]
+const bindingRules: FormRules<typeof bindingForm> = {};
+
+const contactEmailRules: FormRules<typeof contactEmailForm> = {
+  email: [
+    {
+      validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+        const normalized = value.trim();
+        if (!normalized) {
+          callback();
+          return;
+        }
+
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailPattern.test(normalized)) {
+          callback(new Error('请输入正确的邮箱地址'));
+          return;
+        }
+
+        callback();
+      },
+      trigger: 'blur'
+    }
+  ]
 };
 
 let trendChart: echarts.ECharts | null = null;
@@ -81,6 +121,14 @@ const isTeamCaptain = computed(() => {
   return myTeam.value.members.some((member) => member.userId === authStore.user!.id && member.role === 'CAPTAIN');
 });
 
+function displayHandle(handle: string | null | undefined) {
+  return handle && handle.trim() ? handle : '无';
+}
+
+function displayRating(handle: string | null | undefined, rating: number | null | undefined) {
+  return handle && handle.trim() ? (rating ?? 0) : '无';
+}
+
 function onAddMemberFromDashboard() {
   if (!isTeamCaptain.value) {
     return;
@@ -103,8 +151,8 @@ const metricCards = computed(() => {
     return [
       { label: '当前积分', value: profile.value.totalPoints, delta: '实时更新' },
       { label: '总做题数', value: profile.value.solvedCount, delta: '累计题量' },
-      { label: 'CF 分数', value: profile.value.cfRating, delta: profile.value.cfHandle },
-      { label: 'ATC 分数', value: profile.value.atcRating, delta: profile.value.atcHandle || '未绑定' }
+      { label: 'CF 分数', value: displayRating(profile.value.cfHandle, profile.value.cfRating), delta: displayHandle(profile.value.cfHandle) },
+      { label: 'ATC 分数', value: displayRating(profile.value.atcHandle, profile.value.atcRating), delta: displayHandle(profile.value.atcHandle) }
     ];
   }
 
@@ -186,6 +234,11 @@ function renderPieChart() {
   });
 }
 
+async function refreshTrendData() {
+  trendData.value = await fetchTrend().catch(() => trendData.value);
+  renderTrendChart(trendData.value);
+}
+
 function handleResize() {
   trendChart?.resize();
   pieChart?.resize();
@@ -200,6 +253,15 @@ function openBindingDialog() {
   bindingDialogVisible.value = true;
 }
 
+function openContactEmailDialog() {
+  if (isStudent.value) {
+    return;
+  }
+
+  contactEmailForm.email = contactEmail.value ?? '';
+  contactEmailDialogVisible.value = true;
+}
+
 async function submitBinding() {
   const valid = await bindingFormRef.value?.validate().catch(() => false);
   if (!valid) {
@@ -208,16 +270,76 @@ async function submitBinding() {
 
   bindingSubmitting.value = true;
   try {
-    const updated = await updatePlatformBinding({
-      cfHandle: bindingForm.cfHandle,
-      atcHandle: bindingForm.atcHandle || null
+    const cfHandle = bindingForm.cfHandle.trim() || null;
+    const atcHandle = bindingForm.atcHandle.trim() || null;
+    profile.value = await updatePlatformBinding({
+      cfHandle,
+      atcHandle
     });
-    profile.value = updated;
+    await refreshTrendData();
+    analytics.value = await fetchDashboardAnalytics().catch(() => analytics.value);
+    contestHistory.value = await fetchMyContestHistory().catch(() => contestHistory.value);
     renderPieChart();
     bindingDialogVisible.value = false;
     ElMessage.success('平台账号绑定已更新');
   } finally {
     bindingSubmitting.value = false;
+  }
+}
+
+async function onSyncOjProfile() {
+  syncingOj.value = true;
+  try {
+    profile.value = await syncMyOjProfile();
+    await refreshTrendData();
+    analytics.value = await fetchDashboardAnalytics().catch(() => analytics.value);
+    contestHistory.value = await fetchMyContestHistory().catch(() => contestHistory.value);
+    renderPieChart();
+    ElMessage.success('真实 OJ 数据同步完成');
+  } finally {
+    syncingOj.value = false;
+  }
+}
+
+async function handleImportAtcSubmissions(options: UploadRequestOptions) {
+  importingAtc.value = true;
+  try {
+    profile.value = await importMyAtcSubmissions(options.file as File);
+    await refreshTrendData();
+    analytics.value = await fetchDashboardAnalytics().catch(() => analytics.value);
+    renderPieChart();
+    ElMessage.success('AtCoder 提交记录导入完成');
+    options.onSuccess?.(profile.value);
+  } catch (error) {
+    const uploadError = {
+      name: 'UploadAjaxError',
+      message: error instanceof Error ? error.message : '导入失败',
+      status: 500,
+      method: 'post',
+      url: '/api/profile/me/import-atc-submissions'
+    } as Parameters<NonNullable<UploadRequestOptions['onError']>>[0];
+    options.onError?.(uploadError);
+  } finally {
+    importingAtc.value = false;
+  }
+}
+
+async function submitContactEmail() {
+  const valid = await contactEmailFormRef.value?.validate().catch(() => false);
+  if (!valid) {
+    return;
+  }
+
+  contactEmailSubmitting.value = true;
+  try {
+    const response = await updateMyContactEmail({
+      email: contactEmailForm.email.trim() || null
+    });
+    contactEmail.value = response.email;
+    contactEmailDialogVisible.value = false;
+    ElMessage.success('告警接收邮箱已更新');
+  } finally {
+    contactEmailSubmitting.value = false;
   }
 }
 
@@ -240,22 +362,32 @@ onMounted(async () => {
     const analyticsPromise = isStudent.value
       ? fetchDashboardAnalytics().catch(() => null)
       : Promise.resolve(null);
+    const contestHistoryPromise = isStudent.value
+      ? fetchMyContestHistory().catch(() => [])
+      : Promise.resolve([]);
     const teamPromise = isStudent.value
       ? fetchMyTeam().catch(() => null)
       : fetchCoachTeams().catch(() => []);
+    const contactEmailPromise = isStudent.value
+      ? Promise.resolve({ email: null })
+      : fetchMyContactEmail().catch(() => ({ email: null }));
 
-    const [profileResult, trendResult, contestResult, analyticsResult, teamResult] = await Promise.all([
+    const [profileResult, trendResult, contestResult, analyticsResult, teamResult, contestHistoryResult, contactEmailResult] = await Promise.all([
       profilePromise,
       fetchTrend().catch(() => fallbackTrend),
       fetchContests().catch(() => []),
       analyticsPromise,
-      teamPromise
+      teamPromise,
+      contestHistoryPromise,
+      contactEmailPromise
     ]);
 
     profile.value = profileResult;
     trendData.value = trendResult;
     contests.value = contestResult;
     analytics.value = analyticsResult;
+    contestHistory.value = contestHistoryResult as OjContestHistoryItem[];
+    contactEmail.value = contactEmailResult.email;
     if (isStudent.value) {
       myTeam.value = teamResult as TeamInfo | null;
     } else {
@@ -290,17 +422,33 @@ onBeforeUnmount(() => {
       <div>
         <h1>{{ isStudent ? '个人中心' : '训练总览' }}</h1>
       </div>
-      <el-button v-if="isStudent" type="primary" @click="openBindingDialog">绑定 CF / ATC 账号</el-button>
+      <div class="header-actions">
+        <template v-if="isStudent">
+          <el-button :loading="syncingOj" type="success" @click="onSyncOjProfile">同步真实 OJ</el-button>
+          <el-upload
+            :show-file-list="false"
+            accept=".json,application/json"
+            :http-request="handleImportAtcSubmissions"
+          >
+            <el-button :loading="importingAtc" type="warning">导入 ATC 提交</el-button>
+          </el-upload>
+          <el-button type="primary" @click="openBindingDialog">绑定 CF / ATC 账号</el-button>
+        </template>
+        <template v-else>
+          <el-button type="primary" @click="openContactEmailDialog">告警接收邮箱</el-button>
+        </template>
+      </div>
     </div>
 
     <section v-if="isStudent" class="section-card glass-panel profile-summary" v-loading="profileLoading">
       <div class="summary-main">
         <h3>{{ profile?.realName || '未设置姓名' }}</h3>
         <p>{{ profile?.grade || '-' }}级 · {{ profile?.major || '-' }}</p>
+        <p class="profile-hint">AtCoder 做题明细支持导入登录态导出的 JSON；导入后题目列表和画像会优先显示真实记录。</p>
       </div>
       <div class="summary-tags">
-        <el-tag type="success">CF: {{ profile?.cfHandle || '未绑定' }}</el-tag>
-        <el-tag type="warning">ATC: {{ profile?.atcHandle || '未绑定' }}</el-tag>
+        <el-tag type="success">CF: {{ displayHandle(profile?.cfHandle) }}</el-tag>
+        <el-tag type="warning">ATC: {{ displayHandle(profile?.atcHandle) }}</el-tag>
       </div>
     </section>
 
@@ -436,6 +584,13 @@ onBeforeUnmount(() => {
         <div class="card-header">
           <h3>教练关注建议</h3>
         </div>
+        <div class="coach-mail-card">
+          <div>
+            <h4>告警接收邮箱</h4>
+            <p>{{ contactEmail || '未设置，当前会回退到系统配置的默认收件人' }}</p>
+          </div>
+          <el-button type="primary" plain @click="openContactEmailDialog">修改</el-button>
+        </div>
         <ul>
           <li>优先关注 3 天内无提交队员</li>
           <li>对高频异常提交设置邮件提醒</li>
@@ -488,33 +643,71 @@ onBeforeUnmount(() => {
 
     <section class="section-card glass-panel" style="margin-top: 18px;">
       <div class="card-header">
-        <h3>近期比赛经历</h3>
+        <h3>{{ isStudent ? '真实比赛经历' : '近期比赛经历' }}</h3>
       </div>
-      <el-timeline>
-        <el-timeline-item
-          v-for="contest in contests"
-          :key="contest.id"
-          :timestamp="contest.platform"
-          placement="top"
-        >
-          <a :href="contest.url" target="_blank" rel="noreferrer">{{ contest.title }}</a>
-        </el-timeline-item>
-      </el-timeline>
-      <el-empty v-if="contests.length === 0" description="暂无比赛记录" :image-size="80" />
+      <template v-if="isStudent">
+        <el-timeline>
+          <el-timeline-item
+            v-for="item in contestHistory"
+            :key="item.id"
+            :timestamp="`${item.platform} · ${item.contestTime}`"
+            placement="top"
+          >
+            <a :href="item.contestUrl" target="_blank" rel="noreferrer">{{ item.contestName }}</a>
+            <div class="contest-history-meta">
+              <span>排名 {{ item.rankNo ?? '-' }}</span>
+              <span>新分 {{ item.newRating ?? '-' }}</span>
+              <span>变化 {{ item.ratingChange ?? '-' }}</span>
+            </div>
+          </el-timeline-item>
+        </el-timeline>
+        <el-empty v-if="contestHistory.length === 0" description="暂无真实比赛记录" :image-size="80" />
+      </template>
+      <template v-else>
+        <el-timeline>
+          <el-timeline-item
+            v-for="contest in contests"
+            :key="contest.id"
+            :timestamp="contest.platform"
+            placement="top"
+          >
+            <a :href="contest.url" target="_blank" rel="noreferrer">{{ contest.title }}</a>
+          </el-timeline-item>
+        </el-timeline>
+        <el-empty v-if="contests.length === 0" description="暂无比赛记录" :image-size="80" />
+      </template>
     </section>
 
     <el-dialog v-if="isStudent" v-model="bindingDialogVisible" title="绑定平台账号" width="460px">
       <el-form ref="bindingFormRef" :model="bindingForm" :rules="bindingRules" label-position="top">
         <el-form-item label="Codeforces ID" prop="cfHandle">
-          <el-input v-model="bindingForm.cfHandle" maxlength="64" placeholder="例如 tourist" />
+          <el-input v-model="bindingForm.cfHandle" maxlength="64" placeholder="例如 tourist；留空表示解绑" />
         </el-form-item>
         <el-form-item label="AtCoder ID" prop="atcHandle">
-          <el-input v-model="bindingForm.atcHandle" maxlength="64" placeholder="例如 rng_58" />
+          <el-input v-model="bindingForm.atcHandle" maxlength="64" placeholder="例如 rng_58；留空表示解绑" />
         </el-form-item>
+        <p class="binding-tip">两个账号都留空时会清空已绑定 OJ 信息，页面显示为“无”。</p>
       </el-form>
       <template #footer>
         <el-button @click="bindingDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="bindingSubmitting" @click="submitBinding">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-if="!isStudent" v-model="contactEmailDialogVisible" title="告警接收邮箱" width="460px">
+      <el-form ref="contactEmailFormRef" :model="contactEmailForm" :rules="contactEmailRules" label-position="top">
+        <el-form-item label="邮箱地址" prop="email">
+          <el-input
+            v-model="contactEmailForm.email"
+            maxlength="128"
+            placeholder="例如 coach@example.com"
+          />
+        </el-form-item>
+        <p class="coach-mail-tip">异常检测邮件会优先发送到这里；留空时回退到系统默认收件人。</p>
+      </el-form>
+      <template #footer>
+        <el-button @click="contactEmailDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="contactEmailSubmitting" @click="submitContactEmail">保存</el-button>
       </template>
     </el-dialog>
 
@@ -547,7 +740,19 @@ onBeforeUnmount(() => {
   color: var(--muted);
 }
 
+.binding-tip {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .summary-tags {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.header-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -562,6 +767,14 @@ onBeforeUnmount(() => {
 
 .team-summary {
   margin-top: 18px;
+}
+
+.contest-history-meta {
+  margin-top: 8px;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--muted);
 }
 
 .team-summary-list {
@@ -755,6 +968,34 @@ onBeforeUnmount(() => {
   padding-left: 18px;
 }
 
+.coach-mail-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border-radius: 14px;
+  background: rgba(29, 91, 143, 0.05);
+  border: 1px solid rgba(29, 91, 143, 0.1);
+}
+
+.coach-mail-card h4 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.coach-mail-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.coach-mail-tip {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .coach-panel li + li {
   margin-top: 10px;
 }
@@ -778,6 +1019,11 @@ a:hover {
   }
 
   .profile-summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .coach-mail-card {
     flex-direction: column;
     align-items: flex-start;
   }

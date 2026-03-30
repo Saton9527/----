@@ -9,6 +9,7 @@ public record AlertResponse(
         String status,
         String description,
         String suspiciousProblems,
-        String suggestion
+        String suggestion,
+        String mailSentAt
 ) {
 }

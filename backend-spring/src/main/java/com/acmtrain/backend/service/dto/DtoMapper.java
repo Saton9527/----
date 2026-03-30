@@ -69,19 +69,6 @@ public class DtoMapper {
     }
 
     public static AlertResponse toAlertResponse(AlertLogEntity entity) {
-        String description = switch (entity.getRuleCode()) {
-            case "RULE_1" -> "短时间内高频通过，超过当前训练画像的正常波动范围。";
-            case "RULE_4" -> "通过题目难度跳跃明显，和近期稳定区间存在偏差。";
-            default -> "训练行为触发异常检测规则。";
-        };
-
-        String suspiciousProblems = switch (entity.getRuleCode()) {
-            case "RULE_1" -> "CF 1749C, CF 1901B, CF 1843C";
-            case "RULE_4" -> "CF 1851C, CF 1899D";
-            default -> "CF 1607A";
-        };
-
-        String suggestion = "建议教练结合最近比赛记录和提交节奏进行人工复核。";
         return new AlertResponse(
                 entity.getId(),
                 entity.getUserName(),
@@ -89,9 +76,10 @@ public class DtoMapper {
                 entity.getRiskLevel(),
                 entity.getHitTime().format(DATETIME_OUTPUT),
                 entity.getStatus(),
-                description,
-                suspiciousProblems,
-                suggestion
+                entity.getDescription(),
+                entity.getSuspiciousProblems(),
+                entity.getSuggestion(),
+                entity.getNotifiedAt() == null ? null : entity.getNotifiedAt().format(DATETIME_OUTPUT)
         );
     }
 
@@ -143,6 +131,7 @@ public class DtoMapper {
         return new ContestResponse(
                 entity.getId(),
                 entity.getPlatform(),
+                entity.getSourceType(),
                 entity.getTitle(),
                 entity.getUrl(),
                 startTime.format(DATETIME_OUTPUT),

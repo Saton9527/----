@@ -6,6 +6,7 @@ export interface MenuItem {
 export const studentMenu: MenuItem[] = [
   { label: '个人中心', path: '/dashboard' },
   { label: '任务中心', path: '/tasks' },
+  { label: '题目列表', path: '/problems' },
   { label: '组队管理', path: '/teams' },
   { label: '推荐题单', path: '/problemsets' },
   { label: '模拟训练赛', path: '/contests' },
@@ -17,6 +18,7 @@ export const studentMenu: MenuItem[] = [
 export const coachMenu: MenuItem[] = [
   { label: '训练总览', path: '/dashboard' },
   { label: '任务管理', path: '/tasks' },
+  { label: '题目列表', path: '/problems' },
   { label: '组队管理', path: '/teams' },
   { label: '教练任务', path: '/coach-tasks' },
   { label: '推荐题单', path: '/problemsets' },

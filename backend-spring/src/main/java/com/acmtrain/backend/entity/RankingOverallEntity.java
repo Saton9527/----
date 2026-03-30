@@ -2,6 +2,8 @@ package com.acmtrain.backend.entity;
 
 import jakarta.persistence.*;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "ranking_overall")
 public class RankingOverallEntity {
@@ -18,7 +20,7 @@ public class RankingOverallEntity {
     @Column(name = "atc_rating", nullable = false)
     private Integer atcRating;
     @Column(name = "total_points", nullable = false)
-    private Integer totalPoints;
+    private BigDecimal totalPoints;
     @Column(name = "solved_count", nullable = false)
     private Integer solvedCount;
     @Column(name = "streak_days", nullable = false)
@@ -34,8 +36,8 @@ public class RankingOverallEntity {
     public void setCfRating(Integer cfRating) { this.cfRating = cfRating; }
     public Integer getAtcRating() { return atcRating; }
     public void setAtcRating(Integer atcRating) { this.atcRating = atcRating; }
-    public Integer getTotalPoints() { return totalPoints; }
-    public void setTotalPoints(Integer totalPoints) { this.totalPoints = totalPoints; }
+    public BigDecimal getTotalPoints() { return totalPoints; }
+    public void setTotalPoints(BigDecimal totalPoints) { this.totalPoints = totalPoints; }
     public Integer getSolvedCount() { return solvedCount; }
     public void setSolvedCount(Integer solvedCount) { this.solvedCount = solvedCount; }
     public Integer getStreakDays() { return streakDays; }

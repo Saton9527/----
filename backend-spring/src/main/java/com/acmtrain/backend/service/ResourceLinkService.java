@@ -8,9 +8,11 @@ import com.acmtrain.backend.dto.UpdateProblemsetSolvedRequest;
 import com.acmtrain.backend.entity.ContestLinkEntity;
 import com.acmtrain.backend.entity.ProblemsetLinkEntity;
 import com.acmtrain.backend.entity.ProblemsetProgressEntity;
+import com.acmtrain.backend.entity.UserAccountEntity;
 import com.acmtrain.backend.repository.ContestLinkRepository;
 import com.acmtrain.backend.repository.ProblemsetLinkRepository;
 import com.acmtrain.backend.repository.ProblemsetProgressRepository;
+import com.acmtrain.backend.repository.UserAccountRepository;
 import com.acmtrain.backend.service.dto.DtoMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -34,15 +36,21 @@ public class ResourceLinkService {
     private final ProblemsetLinkRepository problemsetLinkRepository;
     private final ProblemsetProgressRepository problemsetProgressRepository;
     private final ContestLinkRepository contestLinkRepository;
+    private final UserAccountRepository userAccountRepository;
+    private final ContestReminderService contestReminderService;
 
     public ResourceLinkService(
             ProblemsetLinkRepository problemsetLinkRepository,
             ProblemsetProgressRepository problemsetProgressRepository,
-            ContestLinkRepository contestLinkRepository
+            ContestLinkRepository contestLinkRepository,
+            UserAccountRepository userAccountRepository,
+            ContestReminderService contestReminderService
     ) {
         this.problemsetLinkRepository = problemsetLinkRepository;
         this.problemsetProgressRepository = problemsetProgressRepository;
         this.contestLinkRepository = contestLinkRepository;
+        this.userAccountRepository = userAccountRepository;
+        this.contestReminderService = contestReminderService;
     }
 
     public List<ProblemsetResponse> getProblemsets(Long userId) {
@@ -100,7 +108,7 @@ public class ResourceLinkService {
     }
 
     public List<ContestResponse> getContests() {
-        return contestLinkRepository.findAllByOrderByIdDesc()
+        return contestLinkRepository.findAllByOrderByStartTimeAscIdAsc()
                 .stream()
                 .map(DtoMapper::toContestResponse)
                 .toList();
@@ -108,6 +116,7 @@ public class ResourceLinkService {
 
     @Transactional
     public ContestResponse createContest(Long userId, ContestCreateRequest request) {
+        validateCoach(userId);
         String url = request.url().trim();
         if (!isQojContestUrl(url)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "训练赛链接必须来自 qoj.ac/contest");
@@ -115,14 +124,22 @@ public class ResourceLinkService {
 
         ContestLinkEntity entity = new ContestLinkEntity();
         entity.setPlatform("QOJ");
+        entity.setSourceType("MANUAL");
+        entity.setSourceKey("MANUAL:" + url + ":" + parseDateTime(request.startTime()));
         entity.setUrl(url);
         entity.setTitle(defaultTitle(request.title(), "QOJ 训练赛"));
         entity.setStartTime(parseDateTime(request.startTime()));
         entity.setReminderMinutes(request.reminderMinutes());
         entity.setCreatedBy(userId);
         entity.setCreatedAt(LocalDateTime.now());
+        entity.setRemindedAt(null);
 
         return DtoMapper.toContestResponse(contestLinkRepository.save(entity));
+    }
+
+    @Transactional
+    public List<ContestResponse> syncOfficialContests(Long userId) {
+        return contestReminderService.syncOfficialContestsNow(userId);
     }
 
     private String defaultTitle(String input, String fallback) {
@@ -169,6 +186,14 @@ public class ResourceLinkService {
             } catch (DateTimeParseException ignored) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startTime 格式错误，应为 yyyy-MM-dd HH:mm");
             }
+        }
+    }
+
+    private void validateCoach(Long userId) {
+        UserAccountEntity user = userAccountRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "当前用户不存在"));
+        if (!"coach".equalsIgnoreCase(user.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "只有教练可以维护比赛提醒");
         }
     }
 }

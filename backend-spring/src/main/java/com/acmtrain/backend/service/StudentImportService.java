@@ -23,6 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -202,7 +204,7 @@ public class StudentImportService {
                 parseInteger(optional(row, columns, "cfRating")),
                 parseInteger(optional(row, columns, "atcRating")),
                 parseInteger(optional(row, columns, "solvedCount")),
-                parseInteger(optional(row, columns, "totalPoints"))
+                parseDecimal(optional(row, columns, "totalPoints"))
         );
     }
 
@@ -259,6 +261,17 @@ public class StudentImportService {
         }
         try {
             return Integer.parseInt(value.trim());
+        } catch (NumberFormatException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "数字字段格式错误: " + value);
+        }
+    }
+
+    private BigDecimal parseDecimal(String value) {
+        if (value == null || value.isBlank()) {
+            return BigDecimal.ZERO.setScale(1, RoundingMode.HALF_UP);
+        }
+        try {
+            return new BigDecimal(value.trim()).setScale(1, RoundingMode.HALF_UP);
         } catch (NumberFormatException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "数字字段格式错误: " + value);
         }
@@ -348,7 +361,7 @@ public class StudentImportService {
             Integer cfRating,
             Integer atcRating,
             Integer solvedCount,
-            Integer totalPoints
+            BigDecimal totalPoints
     ) {
     }
 }

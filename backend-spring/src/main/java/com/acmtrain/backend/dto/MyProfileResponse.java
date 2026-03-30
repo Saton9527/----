@@ -1,5 +1,7 @@
 package com.acmtrain.backend.dto;
 
+import java.math.BigDecimal;
+
 public record MyProfileResponse(
         Long userId,
         String username,
@@ -11,6 +13,6 @@ public record MyProfileResponse(
         Integer cfRating,
         Integer atcRating,
         Integer solvedCount,
-        Integer totalPoints
+        BigDecimal totalPoints
 ) {
 }

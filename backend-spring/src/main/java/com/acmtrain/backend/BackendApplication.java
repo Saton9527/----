@@ -12,12 +12,15 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
 @SpringBootApplication
 @EnableCaching
+@EnableScheduling
 public class BackendApplication {
     public static void main(String[] args) {
         SpringApplication.run(BackendApplication.class, args);
@@ -76,17 +79,17 @@ public class BackendApplication {
             ));
 
             studentInfoRepository.saveAll(List.of(
-                    studentInfo(users.get(1).getId(), "演示学生A", "2023", "计算机科学与技术", "student01_cf", "student01_atc", 1620, 1450, 161, 248),
-                    studentInfo(users.get(2).getId(), "演示学生B", "2023", "软件工程", "student02_cf", "student02_atc", 1540, 1410, 145, 221),
-                    studentInfo(users.get(3).getId(), "演示学生C", "2024", "数据科学与大数据技术", "student03_cf", "student03_atc", 1490, 1330, 123, 198),
-                    studentInfo(users.get(5).getId(), "演示用户", "2024", "人工智能", "demo_cf", "demo_atc", 1360, 1290, 98, 186)
+                    studentInfo(users.get(1).getId(), "演示学生A", "2023", "计算机科学与技术", null, null, 0, 0, 0, BigDecimal.valueOf(24.0)),
+                    studentInfo(users.get(2).getId(), "演示学生B", "2023", "软件工程", "Benq", "Benq", 3792, 3658, 145, BigDecimal.valueOf(221.0)),
+                    studentInfo(users.get(3).getId(), "演示学生C", "2024", "数据科学与大数据技术", "ecnerwala", "ecnerwala", 3696, 3619, 123, BigDecimal.valueOf(198.0)),
+                    studentInfo(users.get(5).getId(), "演示用户", "2024", "人工智能", "rng_58", "rng_58", 3074, 0, 98, BigDecimal.valueOf(186.0))
             ));
 
             rankingOverallRepository.saveAll(List.of(
-                    ranking(1, "演示学生A", 1620, 1450, 248, 161, 9),
-                    ranking(2, "演示学生B", 1540, 1410, 221, 145, 7),
-                    ranking(3, "演示学生C", 1490, 1330, 198, 123, 5),
-                    ranking(4, "演示用户", 1360, 1290, 186, 98, 6)
+                    ranking(4, "演示学生A", 0, 0, BigDecimal.valueOf(24.0), 0, 1),
+                    ranking(1, "演示学生B", 3792, 3658, BigDecimal.valueOf(221.0), 145, 7),
+                    ranking(2, "演示学生C", 3696, 3619, BigDecimal.valueOf(198.0), 123, 5),
+                    ranking(3, "演示用户", 3074, 0, BigDecimal.valueOf(186.0), 98, 6)
             ));
 
             trendPointRepository.saveAll(List.of(
@@ -111,7 +114,7 @@ public class BackendApplication {
             Integer cfRating,
             Integer atcRating,
             Integer solvedCount,
-            Integer totalPoints
+            BigDecimal totalPoints
     ) {
         StudentInfoEntity entity = new StudentInfoEntity();
         entity.setUserId(userId);
@@ -132,7 +135,7 @@ public class BackendApplication {
             String userName,
             Integer cfRating,
             Integer atcRating,
-            Integer totalPoints,
+            BigDecimal totalPoints,
             Integer solvedCount,
             Integer streakDays
     ) {

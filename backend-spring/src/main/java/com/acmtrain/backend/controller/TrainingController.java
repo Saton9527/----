@@ -3,6 +3,8 @@ package com.acmtrain.backend.controller;
 import com.acmtrain.backend.dto.*;
 import com.acmtrain.backend.service.StudentImportService;
 import com.acmtrain.backend.service.TrainingQueryService;
+import com.acmtrain.backend.service.OjSyncService;
+import com.acmtrain.backend.service.ProfileContactService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -18,10 +20,19 @@ public class TrainingController {
 
     private final TrainingQueryService trainingQueryService;
     private final StudentImportService studentImportService;
+    private final OjSyncService ojSyncService;
+    private final ProfileContactService profileContactService;
 
-    public TrainingController(TrainingQueryService trainingQueryService, StudentImportService studentImportService) {
+    public TrainingController(
+            TrainingQueryService trainingQueryService,
+            StudentImportService studentImportService,
+            OjSyncService ojSyncService,
+            ProfileContactService profileContactService
+    ) {
         this.trainingQueryService = trainingQueryService;
         this.studentImportService = studentImportService;
+        this.ojSyncService = ojSyncService;
+        this.profileContactService = profileContactService;
     }
 
     @GetMapping("/tasks")
@@ -57,14 +68,15 @@ public class TrainingController {
 
     @GetMapping("/points/me/logs")
     public PageResponse<PointLogResponse> points(
+            @RequestAttribute("userId") Long userId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return trainingQueryService.points(page, size);
+        return trainingQueryService.points(userId, page, size);
     }
 
     @GetMapping("/dashboard/me/trend")
-    public List<TrendPointResponse> trend() {
-        return trainingQueryService.trend();
+    public List<TrendPointResponse> trend(@RequestAttribute("userId") Long userId) {
+        return trainingQueryService.trend(userId);
     }
 
     @GetMapping("/dashboard/me/analytics")
@@ -82,7 +94,39 @@ public class TrainingController {
             @RequestAttribute("userId") Long userId,
             @Valid @RequestBody UpdatePlatformBindingRequest request
     ) {
-        return trainingQueryService.updatePlatformBinding(userId, request);
+        trainingQueryService.updatePlatformBinding(userId, request);
+        return ojSyncService.syncMyProfile(userId);
+    }
+
+    @PostMapping("/profile/me/sync-oj")
+    public MyProfileResponse syncMyOjProfile(@RequestAttribute("userId") Long userId) {
+        return ojSyncService.syncMyProfile(userId);
+    }
+
+    @PostMapping("/profile/me/import-atc-submissions")
+    public MyProfileResponse importMyAtCoderSubmissions(
+            @RequestAttribute("userId") Long userId,
+            @RequestPart("file") MultipartFile file
+    ) {
+        return ojSyncService.importMyAtCoderSubmissions(userId, file);
+    }
+
+    @GetMapping("/profile/me/contact-email")
+    public ContactEmailResponse myContactEmail(@RequestAttribute("userId") Long userId) {
+        return profileContactService.getMyContactEmail(userId);
+    }
+
+    @PutMapping("/profile/me/contact-email")
+    public ContactEmailResponse updateMyContactEmail(
+            @RequestAttribute("userId") Long userId,
+            @Valid @RequestBody UpdateContactEmailRequest request
+    ) {
+        return profileContactService.updateMyContactEmail(userId, request);
+    }
+
+    @GetMapping("/profile/me/contest-history")
+    public List<OjContestHistoryResponse> myContestHistory(@RequestAttribute("userId") Long userId) {
+        return ojSyncService.getMyContestHistory(userId);
     }
 
     @GetMapping("/recommendations/me")
@@ -91,6 +135,19 @@ public class TrainingController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return trainingQueryService.recommendations(userId, page, size);
+    }
+
+    @GetMapping("/problems")
+    public PageResponse<ProblemCatalogResponse> problems(
+            @RequestAttribute("userId") Long userId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer minRating,
+            @RequestParam(required = false) Integer maxRating,
+            @RequestParam(required = false) Boolean solved,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "12") int size
+    ) {
+        return trainingQueryService.problems(userId, keyword, minRating, maxRating, solved, page, size);
     }
 
     @GetMapping("/alerts")
@@ -122,6 +179,23 @@ public class TrainingController {
             @Valid @RequestBody UpdateStudentRequest request
     ) {
         return trainingQueryService.updateStudent(userId, id, request);
+    }
+
+    @PostMapping("/students/{id}/sync-oj")
+    public StudentResponse syncStudentOj(
+            @RequestAttribute("userId") Long userId,
+            @PathVariable Long id
+    ) {
+        return ojSyncService.syncStudentById(userId, id);
+    }
+
+    @PostMapping("/students/{id}/import-atc-submissions")
+    public StudentResponse importStudentAtCoderSubmissions(
+            @RequestAttribute("userId") Long userId,
+            @PathVariable Long id,
+            @RequestPart("file") MultipartFile file
+    ) {
+        return ojSyncService.importStudentAtCoderSubmissions(userId, id, file);
     }
 
     @PostMapping("/students/import")

@@ -5,7 +5,7 @@ export interface StudentItem {
   realName: string;
   grade: string;
   major: string;
-  cfHandle: string;
+  cfHandle: string | null;
   atcHandle: string | null;
   cfRating: number;
   atcRating: number;
@@ -33,7 +33,7 @@ export interface StudentUpsertPayload {
   realName: string;
   grade: string;
   major: string;
-  cfHandle: string;
+  cfHandle: string | null;
   atcHandle: string | null;
   cfRating: number;
   atcRating: number;

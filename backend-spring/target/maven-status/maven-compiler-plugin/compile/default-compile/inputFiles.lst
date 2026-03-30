@@ -12,6 +12,7 @@ D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\cont
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\AlertResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\CoachTaskCreateRequest.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\CoachTaskResponse.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\ContactEmailResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\ContestCreateRequest.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\ContestResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\CreateStudentRequest.java
@@ -21,9 +22,11 @@ D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\LoginResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\MyCoachTaskResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\MyProfileResponse.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\OjContestHistoryResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\PageResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\PointLogResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\ProblemBucketResponse.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\ProblemCatalogResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\ProblemDetailResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\ProblemsetCreateRequest.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\ProblemsetResponse.java
@@ -41,6 +44,7 @@ D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\TeamResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\TrendPointResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\UpdateAssignmentStatusRequest.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\UpdateContactEmailRequest.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\UpdatePlatformBindingRequest.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\UpdateProblemsetSolvedRequest.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\UpdateStudentRequest.java
@@ -51,6 +55,8 @@ D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\enti
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\entity\CoachTaskAssignmentEntity.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\entity\CoachTaskEntity.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\entity\ContestLinkEntity.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\entity\OjContestHistoryEntity.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\entity\OjSolvedProblemEntity.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\entity\PointLogEntity.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\entity\ProblemsetLinkEntity.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\entity\ProblemsetProgressEntity.java
@@ -67,6 +73,8 @@ D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repo
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repository\CoachTaskAssignmentRepository.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repository\CoachTaskRepository.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repository\ContestLinkRepository.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repository\OjContestHistoryRepository.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repository\OjSolvedProblemRepository.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repository\PointLogRepository.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repository\ProblemsetLinkRepository.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repository\ProblemsetProgressRepository.java
@@ -79,8 +87,15 @@ D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repo
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repository\TrainingTaskRepository.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repository\TrendPointRepository.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\repository\UserAccountRepository.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\AlertNotificationService.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\CoachTaskService.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\CodeforcesCatalogService.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\ContestReminderService.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\dto\DtoMapper.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\OfficialOjAccountValidationService.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\OjAccountValidationService.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\OjSyncService.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\ProfileContactService.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\ResourceLinkService.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\StudentImportService.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\TeamService.java

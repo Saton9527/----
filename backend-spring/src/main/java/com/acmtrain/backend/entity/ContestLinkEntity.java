@@ -21,6 +21,12 @@ public class ContestLinkEntity {
     @Column(nullable = false)
     private String url;
 
+    @Column(name = "source_type", nullable = false)
+    private String sourceType;
+
+    @Column(name = "source_key", nullable = false, unique = true)
+    private String sourceKey;
+
     @Column(name = "start_time", nullable = false)
     private LocalDateTime startTime;
 
@@ -33,6 +39,9 @@ public class ContestLinkEntity {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "reminded_at")
+    private LocalDateTime remindedAt;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getPlatform() { return platform; }
@@ -41,6 +50,10 @@ public class ContestLinkEntity {
     public void setTitle(String title) { this.title = title; }
     public String getUrl() { return url; }
     public void setUrl(String url) { this.url = url; }
+    public String getSourceType() { return sourceType; }
+    public void setSourceType(String sourceType) { this.sourceType = sourceType; }
+    public String getSourceKey() { return sourceKey; }
+    public void setSourceKey(String sourceKey) { this.sourceKey = sourceKey; }
     public LocalDateTime getStartTime() { return startTime; }
     public void setStartTime(LocalDateTime startTime) { this.startTime = startTime; }
     public Integer getReminderMinutes() { return reminderMinutes; }
@@ -49,4 +62,6 @@ public class ContestLinkEntity {
     public void setCreatedBy(Long createdBy) { this.createdBy = createdBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public LocalDateTime getRemindedAt() { return remindedAt; }
+    public void setRemindedAt(LocalDateTime remindedAt) { this.remindedAt = remindedAt; }
 }

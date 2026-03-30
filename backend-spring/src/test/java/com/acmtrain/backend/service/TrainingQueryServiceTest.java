@@ -1,13 +1,14 @@
 package com.acmtrain.backend.service;
 
 import com.acmtrain.backend.dto.*;
+import com.acmtrain.backend.entity.OjSolvedProblemEntity;
 import com.acmtrain.backend.entity.StudentInfoEntity;
 import com.acmtrain.backend.entity.TrainingTaskEntity;
 import com.acmtrain.backend.entity.UserAccountEntity;
 import com.acmtrain.backend.repository.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.data.domain.Page;
@@ -16,6 +17,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -48,12 +51,36 @@ class TrainingQueryServiceTest {
     @Mock
     private UserAccountRepository userAccountRepository;
 
-    @InjectMocks
+    @Mock
+    private OjSolvedProblemRepository ojSolvedProblemRepository;
+
     private TrainingQueryService trainingQueryService;
+    private final OjAccountValidationService ojAccountValidationService = new OjAccountValidationService() {
+        @Override
+        public void validateCodeforcesHandle(String handle) {
+        }
+
+        @Override
+        public void validateAtCoderHandle(String handle) {
+        }
+    };
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        trainingQueryService = new TrainingQueryService(
+                trainingTaskRepository,
+                rankingOverallRepository,
+                pointLogRepository,
+                trendPointRepository,
+                recommendationRepository,
+                alertLogRepository,
+                studentInfoRepository,
+                userAccountRepository,
+                ojSolvedProblemRepository,
+                new CodeforcesCatalogService(new ObjectMapper()),
+                ojAccountValidationService
+        );
     }
 
     @Test
@@ -224,7 +251,7 @@ class TrainingQueryServiceTest {
         savedStudent.setCfRating(1600);
         savedStudent.setAtcRating(1450);
         savedStudent.setSolvedCount(120);
-        savedStudent.setTotalPoints(220);
+        savedStudent.setTotalPoints(BigDecimal.valueOf(220.0));
 
         when(userAccountRepository.findById(99L)).thenReturn(java.util.Optional.of(coach));
         when(userAccountRepository.findByUsername("student10")).thenReturn(java.util.Optional.empty());
@@ -242,7 +269,7 @@ class TrainingQueryServiceTest {
                 1600,
                 1450,
                 120,
-                220
+                BigDecimal.valueOf(220.0)
         ));
 
         assertNotNull(result);
@@ -268,7 +295,7 @@ class TrainingQueryServiceTest {
         existingStudent.setCfRating(1200);
         existingStudent.setAtcRating(1100);
         existingStudent.setSolvedCount(50);
-        existingStudent.setTotalPoints(80);
+        existingStudent.setTotalPoints(BigDecimal.valueOf(80.0));
 
         UserAccountEntity existingUser = new UserAccountEntity();
         existingUser.setId(10L);
@@ -295,7 +322,7 @@ class TrainingQueryServiceTest {
         savedStudent.setCfRating(1650);
         savedStudent.setAtcRating(1500);
         savedStudent.setSolvedCount(180);
-        savedStudent.setTotalPoints(260);
+        savedStudent.setTotalPoints(BigDecimal.valueOf(260.0));
 
         when(userAccountRepository.findById(99L)).thenReturn(java.util.Optional.of(coach));
         when(studentInfoRepository.findById(8L)).thenReturn(java.util.Optional.of(existingStudent));
@@ -315,13 +342,71 @@ class TrainingQueryServiceTest {
                 1650,
                 1500,
                 180,
-                260
+                BigDecimal.valueOf(260.0)
         ));
 
         assertNotNull(result);
         assertEquals("student10new", result.username());
         assertEquals("新姓名", result.realName());
         verify(userAccountRepository).save(any(UserAccountEntity.class));
+        verify(studentInfoRepository).save(any(StudentInfoEntity.class));
+    }
+
+    @Test
+    void testTrendUsesRealSolvedProblemsForStudent() {
+        UserAccountEntity user = new UserAccountEntity();
+        user.setId(2L);
+        user.setRole("student");
+
+        LocalDate today = LocalDate.now();
+        OjSolvedProblemEntity first = new OjSolvedProblemEntity();
+        first.setAcceptedAt(today.minusDays(2).atTime(10, 0));
+        OjSolvedProblemEntity second = new OjSolvedProblemEntity();
+        second.setAcceptedAt(today.minusDays(2).atTime(21, 0));
+        OjSolvedProblemEntity third = new OjSolvedProblemEntity();
+        third.setAcceptedAt(today.minusDays(5).atTime(8, 30));
+
+        when(userAccountRepository.findById(2L)).thenReturn(java.util.Optional.of(user));
+        when(ojSolvedProblemRepository.findAllByUserIdAndAcceptedAtBetweenOrderByAcceptedAtAsc(eq(2L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of(first, second, third));
+
+        List<TrendPointResponse> result = trainingQueryService.trend(2L);
+
+        assertEquals(7, result.size());
+        assertEquals(2, result.stream().filter(item -> item.date().equals(today.minusDays(2).format(java.time.format.DateTimeFormatter.ofPattern("MM-dd")))).findFirst().orElseThrow().solved());
+        assertEquals(1, result.stream().filter(item -> item.date().equals(today.minusDays(5).format(java.time.format.DateTimeFormatter.ofPattern("MM-dd")))).findFirst().orElseThrow().solved());
+    }
+
+    @Test
+    void testUpdatePlatformBindingAllowsUnbind() {
+        UserAccountEntity user = new UserAccountEntity();
+        user.setId(2L);
+        user.setUsername("student01");
+        user.setRealName("演示学生A");
+        user.setRole("student");
+
+        StudentInfoEntity student = new StudentInfoEntity();
+        student.setId(1L);
+        student.setUserId(2L);
+        student.setRealName("演示学生A");
+        student.setGrade("2023");
+        student.setMajor("计算机科学与技术");
+        student.setCfHandle("tourist");
+        student.setAtcHandle("tourist");
+        student.setCfRating(3755);
+        student.setAtcRating(3797);
+        student.setSolvedCount(161);
+        student.setTotalPoints(BigDecimal.valueOf(248.0));
+
+        when(studentInfoRepository.findByUserId(2L)).thenReturn(java.util.Optional.of(student));
+        when(studentInfoRepository.save(any(StudentInfoEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userAccountRepository.findById(2L)).thenReturn(java.util.Optional.of(user));
+
+        MyProfileResponse result = trainingQueryService.updatePlatformBinding(2L, new UpdatePlatformBindingRequest(null, null));
+
+        assertNotNull(result);
+        assertNull(result.cfHandle());
+        assertNull(result.atcHandle());
         verify(studentInfoRepository).save(any(StudentInfoEntity.class));
     }
 }
