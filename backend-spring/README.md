@@ -40,10 +40,39 @@ This command will:
 - 告警邮件默认关闭：`acm.alert.mail.enabled=false`
 - 官方比赛自动同步默认关闭：`acm.contest.sync-enabled=false`
 - 比赛提醒邮件默认关闭：`acm.contest.reminder-enabled=false`
+- 比赛提醒与异常邮件都支持直接用环境变量开启：
+- `CONTEST_SYNC_ENABLED`
+- `CONTEST_SYNC_CRON`
+- `CONTEST_REMINDER_ENABLED`
+- `CONTEST_REMINDER_CRON`
+- `CF_REMINDER_MINUTES`
+- `ATC_REMINDER_MINUTES`
+- `ALERT_MAIL_ENABLED`
+- `ALERT_MAIL_CRON`
+- AtCoder 自动做题同步支持环境变量：
+- `ATC_SUBMISSIONS_ENABLED`
+- `ATC_SUBMISSIONS_API_BASE_URL`
+- `ATC_PROBLEM_API_BASE_URL`
+- `ATC_REQUEST_INTERVAL_MS`
+- `ATC_SUBMISSIONS_API_BASE_URL` 和 `ATC_PROBLEM_API_BASE_URL` 都支持逗号分隔的有序多源回退。
+- 即使 `ATC_PROBLEM_API_BASE_URL` 默认源不可用，系统也会自动回退到：
+  - `raw.githubusercontent.com/kenkoooo/AtCoderProblems/.../problem-models.json`
+  - `cdn.jsdelivr.net/gh/kenkoooo/AtCoderProblems@master/.../problem-models.json`
+  用于继续加载 AtCoder 题目难度与积分所需的 metadata。
+
+示例：
+
+```powershell
+$env:ATC_SUBMISSIONS_ENABLED='true'
+$env:ATC_SUBMISSIONS_API_BASE_URL='https://mirror-a.example.com/atcoder-api/v3,https://mirror-b.example.com/atcoder-api/v3'
+$env:ATC_PROBLEM_API_BASE_URL='https://mirror-a.example.com/resources,https://mirror-b.example.com/resources'
+$env:ATC_REQUEST_INTERVAL_MS='1200'
+```
 
 ### AtCoder 提交导入说明
 
 - 只使用官方公开源时，AtCoder 目前只能稳定同步 `rating` 和比赛历史；做题明细需要用户自行导出登录态下的提交 JSON。
+- 当 `kenkoooo.com` 的 `resources` 接口不可用时，系统仍会自动回退到 GitHub Raw / jsDelivr 加载 `problem-models.json`，所以 AtCoder 题目难度和相关积分不会一起失效。
 - 导入后会覆盖该学生现有的 AtCoder 已做题记录，并重算对应的 OJ 题目积分；Codeforces 题目记录和比赛积分不会受影响。
 - 绑定的 AtCoder 账号必须和 JSON 里的 `user_id` 一致；如果 JSON 不带用户字段，系统会按当前绑定账号直接导入。
 
@@ -131,6 +160,9 @@ $env:ALERT_MAIL_TO='coach1@example.com,coach2@example.com'
 acm:
   sync:
     scheduler-enabled: true
+  contest:
+    sync-enabled: true
+    reminder-enabled: true
   alert:
     mail:
       enabled: true

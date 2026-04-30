@@ -3,6 +3,7 @@ import { isMockEnabled, mockResolve } from './mock';
 import type {
   ContactEmailResponse,
   MyProfile,
+  MyProfileSyncJob,
   OjContestHistoryItem,
   UpdateContactEmailPayload,
   UpdatePlatformBindingPayload
@@ -27,6 +28,7 @@ const mockContactEmail: ContactEmailResponse = {
 };
 
 let mockContestHistory: OjContestHistoryItem[] = [];
+let mockSyncJob: MyProfileSyncJob | null = null;
 
 export async function fetchMyProfile(): Promise<MyProfile> {
   if (isMockEnabled) {
@@ -73,6 +75,43 @@ export async function syncMyOjProfile(): Promise<MyProfile> {
   return (await http.post('/api/profile/me/sync-oj', null, {
     timeout: 180000
   })) as unknown as MyProfile;
+}
+
+export async function startMyOjSyncJob(): Promise<MyProfileSyncJob> {
+  if (isMockEnabled) {
+    mockSyncJob = {
+      jobId: 'mock-my-sync-job',
+      status: 'SUCCESS',
+      message: '真实 OJ 数据同步完成',
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      profile: {
+        ...mockProfile,
+        cfRating: mockProfile.cfHandle ? mockProfile.cfRating + 15 : 0,
+        atcRating: mockProfile.atcHandle ? mockProfile.atcRating + 12 : 0,
+        solvedCount: mockProfile.cfHandle || mockProfile.atcHandle ? mockProfile.solvedCount + 3 : 0,
+        totalPoints: mockProfile.cfHandle || mockProfile.atcHandle ? mockProfile.totalPoints + 2.4 : mockProfile.totalPoints
+      }
+    };
+    mockProfile.cfRating = mockSyncJob.profile!.cfRating;
+    mockProfile.atcRating = mockSyncJob.profile!.atcRating;
+    mockProfile.solvedCount = mockSyncJob.profile!.solvedCount;
+    mockProfile.totalPoints = mockSyncJob.profile!.totalPoints;
+    return mockResolve(mockSyncJob, 400);
+  }
+
+  return (await http.post('/api/profile/me/sync-oj/jobs')) as unknown as MyProfileSyncJob;
+}
+
+export async function fetchMyOjSyncJob(jobId: string): Promise<MyProfileSyncJob> {
+  if (isMockEnabled) {
+    if (!mockSyncJob || mockSyncJob.jobId !== jobId) {
+      throw new Error('同步任务不存在');
+    }
+    return mockResolve(mockSyncJob, 200);
+  }
+
+  return (await http.get(`/api/profile/me/sync-oj/jobs/${jobId}`)) as unknown as MyProfileSyncJob;
 }
 
 export async function importMyAtcSubmissions(file: File): Promise<MyProfile> {

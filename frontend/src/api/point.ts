@@ -14,6 +14,8 @@ export async function fetchPointLogs(): Promise<PointLogItem[]> {
     return mockResolve(mockLogs);
   }
 
-  const payload = await http.get('/api/points/me/logs');
+  const payload = await http.get('/api/points/me/logs', {
+    skipErrorMessage: true
+  });
   return unwrapList<PointLogItem>(payload);
 }

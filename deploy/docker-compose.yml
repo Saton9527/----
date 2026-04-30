@@ -27,6 +27,26 @@ services:
       DB_NAME: acm_train
       DB_USER: acm_user
       DB_PASS: acm_pass
+      MAIL_HOST: smtp.example.com
+      MAIL_PORT: 587
+      MAIL_USERNAME: bot@example.com
+      MAIL_PASSWORD: change-me
+      MAIL_FROM: bot@example.com
+      # Use a comma-separated ordered list when you have multiple mirrors.
+      ATC_SUBMISSIONS_ENABLED: "true"
+      ATC_SUBMISSIONS_API_BASE_URL: https://kenkoooo.com/atcoder/atcoder-api/v3
+      ATC_PROBLEM_API_BASE_URL: https://kenkoooo.com/atcoder/resources
+      ATC_REQUEST_INTERVAL_MS: 1200
+      CONTEST_SYNC_ENABLED: "true"
+      CONTEST_SYNC_CRON: "0 0 */4 * * *"
+      CONTEST_REMINDER_ENABLED: "true"
+      CONTEST_REMINDER_CRON: "0 */10 * * * *"
+      CF_REMINDER_MINUTES: 120
+      ATC_REMINDER_MINUTES: 120
+      CONTEST_MAIL_TO: coach1@example.com,coach2@example.com
+      ALERT_MAIL_ENABLED: "true"
+      ALERT_MAIL_CRON: "0 */10 * * * *"
+      ALERT_MAIL_TO: coach1@example.com,coach2@example.com
     ports:
       - "8080:8080"
     depends_on:

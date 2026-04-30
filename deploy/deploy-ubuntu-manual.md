@@ -38,8 +38,39 @@ export DB_PORT=3306
 export DB_NAME=acm_train
 export DB_USER=acm_user
 export DB_PASS=acm_pass
+export MAIL_HOST=smtp.example.com
+export MAIL_PORT=587
+export MAIL_USERNAME=bot@example.com
+export MAIL_PASSWORD=change-me
+export MAIL_FROM=bot@example.com
+export ATC_SUBMISSIONS_ENABLED=true
+export ATC_SUBMISSIONS_API_BASE_URL=https://kenkoooo.com/atcoder/atcoder-api/v3
+export ATC_PROBLEM_API_BASE_URL=https://kenkoooo.com/atcoder/resources
+export ATC_REQUEST_INTERVAL_MS=1200
+export CONTEST_SYNC_ENABLED=true
+export CONTEST_REMINDER_ENABLED=true
+export CONTEST_MAIL_TO=coach1@example.com,coach2@example.com
+export ALERT_MAIL_ENABLED=true
+export ALERT_MAIL_TO=coach1@example.com,coach2@example.com
 
 java -jar target/backend-spring-0.0.1-SNAPSHOT.jar
+```
+
+如果你有多个可用的 AtCoder 镜像源，可以把下面两个变量改成逗号分隔的有序列表：
+
+```bash
+export ATC_SUBMISSIONS_API_BASE_URL=https://mirror-a.example.com/atcoder-api/v3,https://mirror-b.example.com/atcoder-api/v3
+export ATC_PROBLEM_API_BASE_URL=https://mirror-a.example.com/resources,https://mirror-b.example.com/resources
+```
+
+如果你需要调整比赛同步和邮件提醒频率，可继续设置：
+
+```bash
+export CONTEST_SYNC_CRON="0 0 */4 * * *"
+export CONTEST_REMINDER_CRON="0 */10 * * * *"
+export ALERT_MAIL_CRON="0 */10 * * * *"
+export CF_REMINDER_MINUTES=120
+export ATC_REMINDER_MINUTES=120
 ```
 
 ## 5. 前端打包

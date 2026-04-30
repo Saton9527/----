@@ -10,6 +10,7 @@ D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\cont
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\controller\TeamController.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\controller\TrainingController.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\AlertResponse.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\CoachTaskAssigneeResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\CoachTaskCreateRequest.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\CoachTaskResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\ContactEmailResponse.java
@@ -22,6 +23,7 @@ D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\LoginResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\MyCoachTaskResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\MyProfileResponse.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\MyProfileSyncJobResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\OjContestHistoryResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\PageResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\PointLogResponse.java
@@ -35,6 +37,7 @@ D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\RecommendationResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\StudentImportResultResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\StudentResponse.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\StudentSyncJobResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\TaskResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\TeamCoachRequest.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\TeamCreateRequest.java
@@ -43,6 +46,7 @@ D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\TeamMemberResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\TeamResponse.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\TrendPointResponse.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\UpdateAlertFeedbackRequest.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\UpdateAssignmentStatusRequest.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\UpdateContactEmailRequest.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\dto\UpdatePlatformBindingRequest.java
@@ -94,6 +98,7 @@ D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\serv
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\dto\DtoMapper.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\OfficialOjAccountValidationService.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\OjAccountValidationService.java
+D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\OjSyncJobService.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\OjSyncService.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\ProfileContactService.java
 D:\Java\code\毕业设计\backend-spring\src\main\java\com\acmtrain\backend\service\ResourceLinkService.java

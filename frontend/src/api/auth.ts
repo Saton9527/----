@@ -20,5 +20,7 @@ export function loginApi(payload: LoginPayload): Promise<LoginResponse> {
     });
   }
 
-  return http.post('/api/auth/login', normalizedPayload);
+  return http.post('/api/auth/login', normalizedPayload, {
+    skipErrorMessage: true
+  });
 }

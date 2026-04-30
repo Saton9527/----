@@ -1,11 +1,13 @@
 
 > acm-train-frontend@0.0.1 dev
-> vite --host 0.0.0.0
+> vite --host 127.0.0.1
 
 
-  [32m[1mVITE[22m v7.3.1[39m  [2mready in [0m[1m507[22m[2m[0m ms[22m
+  [32m[1mVITE[22m v7.3.1[39m  [2mready in [0m[1m796[22m[2m[0m ms[22m
 
-  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
-  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.0.103:[1m5173[22m/[39m
-[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
-[2m23:57:35[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/views/DashboardView.vue[22m
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5173[22m/[39m
+[2m22:45:16[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/views/CoachTaskView.vue[22m
+[2m22:46:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/views/CoachTaskView.vue, /src/views/CoachTaskView.vue?vue&type=style&index=0&scoped=1ddefe17&lang.css[22m
+[2m23:06:37[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/views/CoachTaskView.vue[22m
+[2m23:09:59[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/views/TeamView.vue[22m
+[2m23:10:55[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/views/TeamView.vue, /src/views/TeamView.vue?vue&type=style&index=0&scoped=6d554ed9&lang.css[22m

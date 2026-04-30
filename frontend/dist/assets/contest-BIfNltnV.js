@@ -1,1 +1,0 @@
-import{j as t}from"./index-C3-MGDje.js";async function a(){return await t.get("/api/contests")}async function c(s){return await t.post("/api/contests",s)}async function o(){return await t.post("/api/contests/sync-official")}export{c,a as f,o as s};

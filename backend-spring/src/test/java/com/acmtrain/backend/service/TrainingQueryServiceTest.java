@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -54,6 +55,9 @@ class TrainingQueryServiceTest {
     @Mock
     private OjSolvedProblemRepository ojSolvedProblemRepository;
 
+    @Mock
+    private CodeforcesCatalogService codeforcesCatalogService;
+
     private TrainingQueryService trainingQueryService;
     private final OjAccountValidationService ojAccountValidationService = new OjAccountValidationService() {
         @Override
@@ -78,7 +82,7 @@ class TrainingQueryServiceTest {
                 studentInfoRepository,
                 userAccountRepository,
                 ojSolvedProblemRepository,
-                new CodeforcesCatalogService(new ObjectMapper()),
+                codeforcesCatalogService,
                 ojAccountValidationService
         );
     }
@@ -393,6 +397,9 @@ class TrainingQueryServiceTest {
         student.setMajor("计算机科学与技术");
         student.setCfHandle("tourist");
         student.setAtcHandle("tourist");
+        student.setCfSyncedHandle("tourist");
+        student.setAtcSyncedHandle("tourist");
+        student.setCfLastSubmissionEpochSecond(123456789L);
         student.setCfRating(3755);
         student.setAtcRating(3797);
         student.setSolvedCount(161);
@@ -407,6 +414,110 @@ class TrainingQueryServiceTest {
         assertNotNull(result);
         assertNull(result.cfHandle());
         assertNull(result.atcHandle());
+        assertEquals(0, result.cfRating());
+        assertEquals(0, result.atcRating());
+        assertEquals(0, result.solvedCount());
+        assertEquals(BigDecimal.ZERO.setScale(1), result.totalPoints());
         verify(studentInfoRepository).save(any(StudentInfoEntity.class));
+    }
+
+    @Test
+    void testUpdatePlatformBindingClearsStaleSyncStateWhenHandleChanges() {
+        UserAccountEntity user = new UserAccountEntity();
+        user.setId(3L);
+        user.setUsername("student02");
+        user.setRealName("演示学生B");
+        user.setRole("student");
+
+        StudentInfoEntity student = new StudentInfoEntity();
+        student.setId(2L);
+        student.setUserId(3L);
+        student.setRealName("演示学生B");
+        student.setGrade("2023");
+        student.setMajor("软件工程");
+        student.setCfHandle("tourist");
+        student.setAtcHandle("Benq");
+        student.setCfSyncedHandle("tourist");
+        student.setAtcSyncedHandle("Benq");
+        student.setCfLastSubmissionEpochSecond(987654321L);
+        student.setCfRating(3755);
+        student.setAtcRating(3658);
+        student.setSolvedCount(3883);
+        student.setTotalPoints(BigDecimal.valueOf(2446.0));
+
+        when(studentInfoRepository.findByUserId(3L)).thenReturn(java.util.Optional.of(student));
+        when(studentInfoRepository.save(any(StudentInfoEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userAccountRepository.findById(3L)).thenReturn(java.util.Optional.of(user));
+
+        MyProfileResponse result = trainingQueryService.updatePlatformBinding(3L, new UpdatePlatformBindingRequest("Benq", "Benq"));
+
+        assertNotNull(result);
+        assertEquals("Benq", result.cfHandle());
+        assertEquals("Benq", result.atcHandle());
+        assertEquals(0, result.cfRating());
+        assertEquals(3658, result.atcRating());
+        assertEquals(0, result.solvedCount());
+        assertEquals(BigDecimal.ZERO.setScale(1), result.totalPoints());
+        assertNull(student.getCfSyncedHandle());
+        assertEquals("Benq", student.getAtcSyncedHandle());
+        assertNull(student.getCfLastSubmissionEpochSecond());
+        verify(studentInfoRepository).save(any(StudentInfoEntity.class));
+    }
+
+    @Test
+    void testRecommendationsKeepBalancedBucketsForLowRatingStudents() {
+        StudentInfoEntity student = new StudentInfoEntity();
+        student.setId(1L);
+        student.setUserId(2L);
+        student.setRealName("演示学生A");
+        student.setCfRating(800);
+        student.setAtcRating(0);
+        student.setSolvedCount(0);
+
+        List<CodeforcesCatalogService.CatalogProblem> catalog = List.of(
+                catalogProblem("CF 1002A1", "Generate superposition of all basis states", 800, "*special"),
+                catalogProblem("CF 1003A", "Polycarp's Pockets", 800, "implementation"),
+                catalogProblem("CF 1005A", "Tanya and Stairways", 800, "implementation"),
+                catalogProblem("CF 1004A", "Sonya and Hotels", 900, "implementation"),
+                catalogProblem("CF 1008B", "Turn the Rectangles", 1000, "greedy"),
+                catalogProblem("CF 1001A", "Generate plus state or minus state", 1100, "*special"),
+                catalogProblem("CF 1006A", "Adjacent Replacements", 1200, "implementation"),
+                catalogProblem("CF 1000C", "Covered Points Count", 1300, "sortings")
+        );
+
+        when(studentInfoRepository.findByUserId(2L)).thenReturn(java.util.Optional.of(student));
+        when(ojSolvedProblemRepository.findAllByUserIdOrderByAcceptedAtDesc(2L)).thenReturn(List.of());
+        when(codeforcesCatalogService.loadProblems()).thenReturn(catalog);
+
+        PageResponse<RecommendationResponse> result = trainingQueryService.recommendations(2L, 0, 12);
+
+        assertNotNull(result);
+        assertEquals(6, result.content().size());
+        assertEquals(2, result.content().stream().filter(item -> "WARMUP".equals(item.level())).count());
+        assertEquals(2, result.content().stream().filter(item -> "CORE".equals(item.level())).count());
+        assertEquals(2, result.content().stream().filter(item -> "CHALLENGE".equals(item.level())).count());
+
+        Map<String, Integer> expectedRatings = Map.of(
+                "CF 1002A1", 800,
+                "CF 1003A", 800,
+                "CF 1005A", 800,
+                "CF 1004A", 900,
+                "CF 1008B", 1000,
+                "CF 1001A", 1100,
+                "CF 1006A", 1200,
+                "CF 1000C", 1300
+        );
+        result.content().forEach(item -> assertEquals(expectedRatings.get(item.problemCode()), item.suggestedRating()));
+    }
+
+    private CodeforcesCatalogService.CatalogProblem catalogProblem(String code, String title, int rating, String tag) {
+        return new CodeforcesCatalogService.CatalogProblem(
+                code,
+                title,
+                rating,
+                tag,
+                List.of(tag),
+                "https://codeforces.com/problemset/problem/demo"
+        );
     }
 }

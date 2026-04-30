@@ -29,6 +29,15 @@ export interface UpdatePlatformBindingPayload {
   atcHandle?: string | null;
 }
 
+export interface MyProfileSyncJob {
+  jobId: string;
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+  message: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  profile: MyProfile | null;
+}
+
 export interface ContactEmailResponse {
   email: string | null;
 }

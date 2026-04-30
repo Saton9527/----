@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { ElMessage } from 'element-plus';
 import { fetchPointLogs } from '@/api/point';
 import type { PointLogItem } from '@/types/point';
 
 const loading = ref(false);
 const logs = ref<PointLogItem[]>([]);
 
-onMounted(async () => {
+async function loadLogs() {
   loading.value = true;
-  logs.value = await fetchPointLogs();
-  loading.value = false;
-});
+  try {
+    logs.value = await fetchPointLogs();
+  } catch {
+    ElMessage.error('积分流水加载失败，请稍后重试');
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(loadLogs);
 </script>
 
 <template>

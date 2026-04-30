@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { ElMessage } from 'element-plus';
+import { useRoute, useRouter } from 'vue-router';
 import { fetchProblems } from '@/api/problem';
 import type { ProblemItem } from '@/types/problem';
 import type { PageResponse } from '@/types/page';
 import { resolveProblemUrl } from '@/utils/problem-link';
 
+const route = useRoute();
+const router = useRouter();
 const loading = ref(false);
 const items = ref<ProblemItem[]>([]);
 const pageState = ref<PageResponse<ProblemItem> | null>(null);
@@ -14,6 +18,7 @@ const filters = reactive({
   minRating: null as number | null,
   maxRating: null as number | null,
   solvedOnly: false,
+  recommendedOnly: false,
   page: 1,
   size: 12
 });
@@ -26,6 +31,11 @@ const solvedCount = computed(() => items.value.filter((item) => item.solved).len
 const recommendedCount = computed(() => items.value.filter((item) => item.recommended).length);
 
 async function loadProblems() {
+  if (filters.minRating != null && filters.maxRating != null && filters.minRating > filters.maxRating) {
+    ElMessage.warning('最低难度不能高于最高难度');
+    return;
+  }
+
   loading.value = true;
   try {
     const response = await fetchProblems({
@@ -33,18 +43,36 @@ async function loadProblems() {
       minRating: filters.minRating,
       maxRating: filters.maxRating,
       solved: filters.solvedOnly ? true : null,
+      recommended: filters.recommendedOnly ? true : null,
       page: filters.page - 1,
       size: filters.size
     });
     pageState.value = response;
     items.value = response.content;
+  } catch {
+    ElMessage.error('题目列表加载失败，请稍后重试');
   } finally {
     loading.value = false;
   }
 }
 
+function syncRouteQuery() {
+  const nextRecommended = filters.recommendedOnly ? 'true' : undefined;
+  if (route.query.recommended === nextRecommended) {
+    return;
+  }
+
+  void router.replace({
+    query: {
+      ...route.query,
+      recommended: nextRecommended
+    }
+  });
+}
+
 function onSearch() {
   filters.page = 1;
+  syncRouteQuery();
   void loadProblems();
 }
 
@@ -53,7 +81,9 @@ function onReset() {
   filters.minRating = null;
   filters.maxRating = null;
   filters.solvedOnly = false;
+  filters.recommendedOnly = false;
   filters.page = 1;
+  syncRouteQuery();
   void loadProblems();
 }
 
@@ -72,7 +102,28 @@ function rowClassName({ row }: { row: ProblemItem }) {
   return '';
 }
 
-onMounted(loadProblems);
+function applyRouteQuery() {
+  filters.recommendedOnly = route.query.recommended === 'true';
+}
+
+onMounted(() => {
+  applyRouteQuery();
+  void loadProblems();
+});
+
+watch(
+  () => route.query.recommended,
+  (recommended) => {
+    const nextRecommendedOnly = recommended === 'true';
+    if (filters.recommendedOnly === nextRecommendedOnly) {
+      return;
+    }
+
+    filters.recommendedOnly = nextRecommendedOnly;
+    filters.page = 1;
+    void loadProblems();
+  }
+);
 </script>
 
 <template>
@@ -112,13 +163,14 @@ onMounted(loadProblems);
       <el-select v-model="filters.minRating" clearable placeholder="最低难度">
         <el-option v-for="rating in ratingOptions" :key="`min-${rating}`" :label="rating" :value="rating" />
       </el-select>
-      <el-select v-model="filters.maxRating" clearable placeholder="最高难度">
-        <el-option v-for="rating in ratingOptions" :key="`max-${rating}`" :label="rating" :value="rating" />
-      </el-select>
-      <el-switch v-model="filters.solvedOnly" inline-prompt active-text="已做" inactive-text="全部" />
-      <el-button type="primary" @click="onSearch">筛选</el-button>
-      <el-button @click="onReset">重置</el-button>
-    </section>
+        <el-select v-model="filters.maxRating" clearable placeholder="最高难度">
+          <el-option v-for="rating in ratingOptions" :key="`max-${rating}`" :label="rating" :value="rating" />
+        </el-select>
+        <el-switch v-model="filters.solvedOnly" inline-prompt active-text="已做" inactive-text="全部" />
+        <el-switch v-model="filters.recommendedOnly" inline-prompt active-text="推荐" inactive-text="全部" />
+        <el-button type="primary" @click="onSearch">筛选</el-button>
+        <el-button @click="onReset">重置</el-button>
+      </section>
 
     <section class="section-card glass-panel" v-loading="loading">
       <el-table :data="items" empty-text="暂无符合条件的题目" :row-class-name="rowClassName">
@@ -170,7 +222,7 @@ onMounted(loadProblems);
 .filter-panel {
   margin-bottom: 18px;
   display: grid;
-  grid-template-columns: minmax(220px, 1.2fr) repeat(2, minmax(140px, 180px)) 120px auto auto;
+  grid-template-columns: minmax(220px, 1.2fr) repeat(2, minmax(140px, 180px)) 120px 120px auto auto;
   gap: 10px;
   align-items: center;
 }

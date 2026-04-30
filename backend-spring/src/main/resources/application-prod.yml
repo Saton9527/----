@@ -31,22 +31,39 @@ logging:
     org.hibernate.SQL: warn
 
 acm:
+  account-validation:
+    connect-timeout-ms: ${ACCOUNT_VALIDATION_CONNECT_TIMEOUT_MS:2000}
+    request-timeout-ms: ${ACCOUNT_VALIDATION_REQUEST_TIMEOUT_MS:3000}
+  coach-task:
+    mail:
+      enabled: ${COACH_TASK_MAIL_ENABLED:false}
+      from: ${COACH_TASK_MAIL_FROM:${MAIL_FROM:no-reply@acmtrain.local}}
+  team:
+    mail:
+      enabled: ${TEAM_INVITE_MAIL_ENABLED:false}
+      from: ${TEAM_INVITE_MAIL_FROM:${MAIL_FROM:no-reply@acmtrain.local}}
   sync:
     scheduler-enabled: false
     cron: "0 0 */6 * * *"
+    atc-submissions-enabled: ${ATC_SUBMISSIONS_ENABLED:true}
+    # Supports a comma-separated ordered list of mirror base URLs.
+    atc-submissions-api-base-url: ${ATC_SUBMISSIONS_API_BASE_URL:https://kenkoooo.com/atcoder/atcoder-api/v3}
+    # Supports a comma-separated ordered list of mirror base URLs.
+    atc-problem-api-base-url: ${ATC_PROBLEM_API_BASE_URL:https://kenkoooo.com/atcoder/resources}
+    atc-request-interval-ms: ${ATC_REQUEST_INTERVAL_MS:1200}
   contest:
-    sync-enabled: false
-    sync-cron: "0 0 */4 * * *"
-    reminder-enabled: false
-    reminder-cron: "0 */10 * * * *"
-    cf-reminder-minutes: 120
-    atc-reminder-minutes: 120
+    sync-enabled: ${CONTEST_SYNC_ENABLED:false}
+    sync-cron: ${CONTEST_SYNC_CRON:0 0 */4 * * *}
+    reminder-enabled: ${CONTEST_REMINDER_ENABLED:false}
+    reminder-cron: ${CONTEST_REMINDER_CRON:0 */10 * * * *}
+    cf-reminder-minutes: ${CF_REMINDER_MINUTES:120}
+    atc-reminder-minutes: ${ATC_REMINDER_MINUTES:120}
     mail:
       from: ${CONTEST_MAIL_FROM:${MAIL_FROM:no-reply@acmtrain.local}}
       to: ${CONTEST_MAIL_TO:${ALERT_MAIL_TO:}}
   alert:
     mail:
-      enabled: false
-      cron: "0 */10 * * * *"
+      enabled: ${ALERT_MAIL_ENABLED:false}
+      cron: ${ALERT_MAIL_CRON:0 */10 * * * *}
       from: ${MAIL_FROM:no-reply@acmtrain.local}
       to: ${ALERT_MAIL_TO:}

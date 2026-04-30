@@ -1,6 +1,7 @@
 package com.acmtrain.backend.service;
 
 import com.acmtrain.backend.dto.*;
+import com.acmtrain.backend.entity.AlertLogEntity;
 import com.acmtrain.backend.entity.OjSolvedProblemEntity;
 import com.acmtrain.backend.entity.RankingOverallEntity;
 import com.acmtrain.backend.entity.StudentInfoEntity;
@@ -50,10 +51,21 @@ public class TrainingQueryService {
     private record ProblemSeed(String code, String title, int rating, String tag, String platform) {
     }
 
+    private record RecommendationPlan(String level, int targetOffset, String levelReason) {
+    }
+
     private static final Logger logger = LoggerFactory.getLogger(TrainingQueryService.class);
     private static final DateTimeFormatter DATETIME_INPUT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final DateTimeFormatter DATE_OUTPUT = DateTimeFormatter.ofPattern("MM-dd");
     private static final ZoneId SHANGHAI_ZONE = ZoneId.of("Asia/Shanghai");
+    private static final List<RecommendationPlan> RECOMMENDATION_PLANS = List.of(
+            new RecommendationPlan("WARMUP", -220, "先用低压题把手感和正确率找回来。"),
+            new RecommendationPlan("WARMUP", -120, "继续热身，优先补足基础题型。"),
+            new RecommendationPlan("CORE", -20, "进入主训练区，先贴着当前水平稳定输出。"),
+            new RecommendationPlan("CORE", 80, "主训练区稍抬一档，适合稳步提难度。"),
+            new RecommendationPlan("CHALLENGE", 180, "开始进入挑战区，适合做一两道拉伸题。"),
+            new RecommendationPlan("CHALLENGE", 300, "最后留一题更高压的冲刺题。")
+    );
 
     private final TrainingTaskRepository trainingTaskRepository;
     private final RankingOverallRepository rankingOverallRepository;
@@ -276,12 +288,30 @@ public class TrainingQueryService {
         StudentInfoEntity student = studentInfoRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "当前用户暂无学生档案"));
 
+        String previousCfHandle = normalizeOptional(student.getCfHandle());
+        String previousAtcHandle = normalizeOptional(student.getAtcHandle());
         String cfHandle = normalizeOptional(request.cfHandle());
         String atcHandle = normalizeOptional(request.atcHandle());
         validateBoundHandles(cfHandle, atcHandle);
 
         student.setCfHandle(cfHandle);
         student.setAtcHandle(atcHandle);
+        if (!equalsIgnoreCase(previousCfHandle, cfHandle)) {
+            ojSolvedProblemRepository.deleteByUserIdAndPlatform(userId, "Codeforces");
+            student.setCfRating(0);
+            student.setCfSyncedHandle(null);
+            student.setCfLastSubmissionEpochSecond(null);
+        }
+        if (!equalsIgnoreCase(previousAtcHandle, atcHandle)) {
+            ojSolvedProblemRepository.deleteByUserIdAndPlatform(userId, "AtCoder");
+            student.setAtcRating(0);
+            student.setAtcSyncedHandle(null);
+            student.setAtcLastSubmissionEpochSecond(null);
+        }
+        if (!equalsIgnoreCase(previousCfHandle, cfHandle) || !equalsIgnoreCase(previousAtcHandle, atcHandle)) {
+            student.setSolvedCount(0);
+            student.setTotalPoints(BigDecimal.ZERO.setScale(1, RoundingMode.HALF_UP));
+        }
         StudentInfoEntity updated = studentInfoRepository.save(student);
 
         UserAccountEntity user = userAccountRepository.findById(userId)
@@ -316,13 +346,14 @@ public class TrainingQueryService {
         return slicePage(all, page, size);
     }
 
-    @Cacheable(value = "problems", key = "#userId + '_' + #keyword + '_' + #minRating + '_' + #maxRating + '_' + #solved + '_' + #page + '_' + #size")
+    @Cacheable(value = "problems", key = "#userId + '_' + #keyword + '_' + #minRating + '_' + #maxRating + '_' + #solved + '_' + #recommended + '_' + #page + '_' + #size")
     public PageResponse<ProblemCatalogResponse> problems(
             Long userId,
             String keyword,
             Integer minRating,
             Integer maxRating,
             Boolean solved,
+            Boolean recommended,
             int page,
             int size
     ) {
@@ -354,6 +385,7 @@ public class TrainingQueryService {
                 .filter(item -> minRating == null || item.rating() >= minRating)
                 .filter(item -> maxRating == null || item.rating() <= maxRating)
                 .filter(item -> solved == null || item.solved() == solved)
+                .filter(item -> recommended == null || item.recommended() == recommended)
                 .sorted(Comparator
                         .comparing(ProblemCatalogResponse::solved, Comparator.reverseOrder())
                         .thenComparing(ProblemCatalogResponse::recommended, Comparator.reverseOrder())
@@ -365,7 +397,8 @@ public class TrainingQueryService {
     }
 
     @Cacheable(value = "alerts", key = "#page + '_' + #size")
-    public PageResponse<AlertResponse> alerts(int page, int size) {
+    public PageResponse<AlertResponse> alerts(Long userId, int page, int size) {
+        validateCoach(userId);
         Pageable pageable = PageRequest.of(page, size);
         Page<?> entityPage = alertLogRepository.findAll(pageable);
 
@@ -382,6 +415,48 @@ public class TrainingQueryService {
                 entityPage.isLast(),
                 entityPage.isFirst()
         );
+    }
+
+    @Cacheable(value = "alerts", key = "'me_' + #userId + '_' + #page + '_' + #size")
+    public PageResponse<AlertResponse> myAlerts(Long userId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<AlertLogEntity> entityPage = alertLogRepository.findByUserIdOrderByHitTimeDescIdDesc(userId, pageable);
+
+        List<AlertResponse> content = entityPage.stream()
+                .map(DtoMapper::toAlertResponse)
+                .toList();
+
+        return new PageResponse<>(
+                content,
+                entityPage.getNumber(),
+                entityPage.getSize(),
+                entityPage.getTotalElements(),
+                entityPage.getTotalPages(),
+                entityPage.isLast(),
+                entityPage.isFirst()
+        );
+    }
+
+    @Transactional
+    @CacheEvict(value = {"alerts"}, allEntries = true)
+    public AlertResponse updateMyAlertFeedback(Long userId, Long alertId, UpdateAlertFeedbackRequest request) {
+        UserAccountEntity user = userAccountRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在"));
+        if (!"student".equalsIgnoreCase(user.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "仅学生可反馈异常");
+        }
+
+        AlertLogEntity alert = alertLogRepository.findByIdAndUserId(alertId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "异常记录不存在"));
+        String feedback = request.feedback() == null ? null : request.feedback().trim();
+        if (feedback != null && feedback.isEmpty()) {
+            feedback = null;
+        }
+
+        alert.setStudentFeedback(feedback);
+        alert.setFeedbackAt(feedback == null ? null : LocalDateTime.now());
+        AlertLogEntity saved = alertLogRepository.save(alert);
+        return DtoMapper.toAlertResponse(saved);
     }
 
     @Cacheable(value = "students", key = "#page + '_' + #size")
@@ -476,9 +551,12 @@ public class TrainingQueryService {
         Set<String> solvedCodes = ojSolvedProblemRepository.findAllByUserIdOrderByAcceptedAtDesc(student.getUserId()).stream()
                 .map(OjSolvedProblemEntity::getProblemCode)
                 .collect(java.util.stream.Collectors.toSet());
+        List<ProblemSeed> catalog = loadCodeforcesProblemSeeds();
 
-        int expectedSolved = Math.max(60, student.getCfRating() / 12);
-        double solvedRatio = expectedSolved == 0 ? 1.0 : student.getSolvedCount() * 1.0 / expectedSolved;
+        int cfRating = student.getCfRating() == null ? 0 : student.getCfRating();
+        int solvedCount = student.getSolvedCount() == null ? 0 : student.getSolvedCount();
+        int expectedSolved = Math.max(60, cfRating / 12);
+        double solvedRatio = expectedSolved == 0 ? 1.0 : solvedCount * 1.0 / expectedSolved;
 
         String profileReason;
         if (solvedRatio >= 1.35) {
@@ -491,31 +569,32 @@ public class TrainingQueryService {
             profileReason = "当前训练节奏与公开分段匹配，继续稳步提升。";
         }
 
-        int[] targets = new int[] {
-                clamp(hiddenRating - 220, 800, 3200),
-                clamp(hiddenRating - 120, 800, 3200),
-                clamp(hiddenRating, 800, 3200),
-                clamp(hiddenRating + 100, 800, 3200),
-                clamp(hiddenRating + 220, 800, 3200),
-                clamp(hiddenRating + 320, 800, 3200)
-        };
-
         Set<String> usedCodes = new HashSet<>();
-        return IntStream.range(0, targets.length)
-                .mapToObj(index -> buildLevelRecommendation(index + 1L, hiddenRating, targets[index], profileReason, usedCodes, solvedCodes))
+        return IntStream.range(0, RECOMMENDATION_PLANS.size())
+                .mapToObj(index -> buildLevelRecommendation(
+                        index + 1L,
+                        hiddenRating,
+                        RECOMMENDATION_PLANS.get(index),
+                        profileReason,
+                        usedCodes,
+                        solvedCodes,
+                        catalog
+                ))
                 .toList();
     }
 
     private RecommendationResponse buildLevelRecommendation(
             long id,
             int hiddenRating,
-            int targetRating,
+            RecommendationPlan plan,
             String profileReason,
             Set<String> usedCodes,
-            Set<String> solvedCodes
+            Set<String> solvedCodes,
+            List<ProblemSeed> catalog
     ) {
-        List<ProblemSeed> catalog = loadCodeforcesProblemSeeds();
+        int targetRating = clamp(hiddenRating + plan.targetOffset(), 800, 3200);
         ProblemSeed selected = catalog.stream()
+                .filter(seed -> matchesRecommendationBand(plan.level(), hiddenRating, seed.rating()))
                 .filter(seed -> !usedCodes.contains(seed.code()))
                 .filter(seed -> !solvedCodes.contains(seed.code()))
                 .min(Comparator.comparingInt(seed -> Math.abs(seed.rating() - targetRating)))
@@ -527,28 +606,28 @@ public class TrainingQueryService {
                                 .orElseThrow()));
 
         usedCodes.add(selected.code());
-        String level = resolveLevel(hiddenRating, targetRating);
-        String reason = "隐藏分 " + hiddenRating + "，建议先做 " + targetRating + " 附近题目。" + profileReason;
+        String reason = "隐藏分 " + hiddenRating + "，建议先做 " + selected.rating() + " 附近题目。"
+                + plan.levelReason()
+                + profileReason;
 
         return new RecommendationResponse(
                 id,
-                level,
+                plan.level(),
                 selected.code(),
                 selected.title(),
-                targetRating,
+                selected.rating(),
                 hiddenRating,
                 reason
         );
     }
 
-    private String resolveLevel(int hiddenRating, int targetRating) {
-        if (targetRating <= hiddenRating - 100) {
-            return "WARMUP";
-        }
-        if (targetRating >= hiddenRating + 160) {
-            return "CHALLENGE";
-        }
-        return "CORE";
+    private boolean matchesRecommendationBand(String level, int hiddenRating, int rating) {
+        return switch (level) {
+            case "WARMUP" -> rating <= Math.max(900, hiddenRating - 20);
+            case "CORE" -> rating >= Math.max(800, hiddenRating - 40) && rating <= hiddenRating + 140;
+            case "CHALLENGE" -> rating >= hiddenRating + 120;
+            default -> true;
+        };
     }
 
     private int computeHiddenRating(StudentInfoEntity student) {
@@ -992,6 +1071,13 @@ public class TrainingQueryService {
 
     private BigDecimal defaultPoints(BigDecimal value) {
         return value == null ? BigDecimal.ZERO.setScale(1, RoundingMode.HALF_UP) : value.setScale(1, RoundingMode.HALF_UP);
+    }
+
+    private boolean equalsIgnoreCase(String left, String right) {
+        if (left == null) {
+            return right == null;
+        }
+        return right != null && left.equalsIgnoreCase(right);
     }
 
     private LocalDateTime parseDateTime(String input) {

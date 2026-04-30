@@ -40,3 +40,13 @@ export interface StudentUpsertPayload {
   solvedCount: number;
   totalPoints: number;
 }
+
+export interface StudentSyncJob {
+  jobId: string;
+  studentId: number;
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+  message: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  student: StudentItem | null;
+}

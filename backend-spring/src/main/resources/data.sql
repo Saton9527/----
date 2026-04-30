@@ -38,15 +38,19 @@ INSERT INTO recommendation (id, level, problem_code, title) VALUES
 (2, 'CORE', 'CF 1851C', 'Tiles Comeback'),
 (3, 'CHALLENGE', 'CF 1899D', 'Yarik and Musical Notes');
 
-INSERT INTO alert_log (id, user_name, rule_code, risk_level, hit_time, status, description, suspicious_problems, suggestion, notified_at) VALUES
-(1, '演示学生B', 'RULE_1', 'HIGH', '2026-03-08 21:15:00', 'OPEN', '24 小时内通过题数异常偏高，超过当前训练画像的正常波动范围。', 'CF 1749C, CF 1901B, CF 1843C', '建议教练结合最近比赛记录和提交节奏进行人工复核。', NULL),
-(2, '演示学生C', 'RULE_4', 'MEDIUM', '2026-03-08 20:00:00', 'OPEN', '最近通过题目难度跳跃明显，和近期稳定区间存在偏差。', 'CF 1851C, CF 1899D', '建议教练核对近期训练安排和比赛背景。', NULL);
+INSERT INTO alert_log (id, user_id, user_name, rule_code, risk_level, hit_time, status, description, suspicious_problems, suggestion, student_feedback, feedback_at, notified_at) VALUES
+  (1, 3, '演示学生B', 'RULE_1', 'HIGH', '2026-03-08 21:15:00', 'OPEN', '24 小时内通过题数异常偏高，超过当前训练画像的正常波动范围。', 'CF 1749C, CF 1901B, CF 1843C', '建议教练结合最近比赛记录和提交节奏进行人工复核。', NULL, NULL, NULL),
+  (2, 4, '演示学生C', 'RULE_4', 'MEDIUM', '2026-03-08 20:00:00', 'OPEN', '最近通过题目难度跳跃明显，和近期稳定区间存在偏差。', 'CF 1851C, CF 1899D', '建议教练核对近期训练安排和比赛背景。', '这些题是周末补题时完成的，来源正常。', '2026-03-08 20:30:00', NULL);
 
-INSERT INTO student_info (id, user_id, real_name, grade, major, cf_handle, atc_handle, cf_rating, atc_rating, solved_count, total_points) VALUES
-(1, 2, '演示学生A', '2023', '计算机科学与技术', NULL, NULL, 0, 0, 0, 24.0),
-(2, 3, '演示学生B', '2023', '软件工程', 'Benq', 'Benq', 3792, 3658, 145, 221.0),
-(3, 4, '演示学生C', '2024', '数据科学与大数据技术', 'ecnerwala', 'ecnerwala', 3696, 3619, 123, 198.0),
-(4, 6, '演示用户', '2024', '人工智能', 'rng_58', 'rng_58', 3074, 0, 98, 186.0);
+INSERT INTO student_info (
+  id, user_id, real_name, grade, major, cf_handle, atc_handle,
+  cf_synced_handle, atc_synced_handle, cf_last_submission_epoch_second, atc_last_submission_epoch_second,
+  cf_rating, atc_rating, solved_count, total_points
+) VALUES
+(1, 2, '演示学生A', '2023', '计算机科学与技术', NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 24.0),
+(2, 3, '演示学生B', '2023', '软件工程', 'Benq', 'Benq', 'Benq', 'Benq', NULL, NULL, 3792, 3658, 145, 221.0),
+(3, 4, '演示学生C', '2024', '数据科学与大数据技术', 'ecnerwala', 'ecnerwala', 'ecnerwala', 'ecnerwala', NULL, NULL, 3696, 3619, 123, 198.0),
+(4, 6, '演示用户', '2024', '人工智能', 'rng_58', 'rng_58', 'rng_58', 'rng_58', NULL, NULL, 3074, 0, 98, 186.0);
 
 INSERT INTO oj_solved_problem (id, user_id, platform, problem_code, title, problem_url, rating, tag, accepted_at, source_key) VALUES
 (4, 3, 'Codeforces', 'CF 580C', 'Kefa and Park', 'https://codeforces.com/problemset/problem/580/C', 1700, 'Graph', '2026-03-28 18:10:00', 'CF:3:580:C');

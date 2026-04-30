@@ -38,6 +38,11 @@ export async function fetchRecommendations(): Promise<RecommendItem[]> {
     return mockResolve(mockRecommendations);
   }
 
-  const payload = await http.get('/api/recommendations/me');
+  const payload = await http.get('/api/recommendations/me', {
+    params: {
+      page: 0,
+      size: 12
+    }
+  });
   return unwrapList<RecommendItem>(payload);
 }

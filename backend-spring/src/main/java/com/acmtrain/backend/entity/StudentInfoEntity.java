@@ -23,6 +23,14 @@ public class StudentInfoEntity {
     private String cfHandle;
     @Column(name = "atc_handle")
     private String atcHandle;
+    @Column(name = "cf_synced_handle")
+    private String cfSyncedHandle;
+    @Column(name = "atc_synced_handle")
+    private String atcSyncedHandle;
+    @Column(name = "cf_last_submission_epoch_second")
+    private Long cfLastSubmissionEpochSecond;
+    @Column(name = "atc_last_submission_epoch_second")
+    private Long atcLastSubmissionEpochSecond;
     @Column(name = "cf_rating", nullable = false)
     private Integer cfRating;
     @Column(name = "atc_rating", nullable = false)
@@ -46,6 +54,14 @@ public class StudentInfoEntity {
     public void setCfHandle(String cfHandle) { this.cfHandle = cfHandle; }
     public String getAtcHandle() { return atcHandle; }
     public void setAtcHandle(String atcHandle) { this.atcHandle = atcHandle; }
+    public String getCfSyncedHandle() { return cfSyncedHandle; }
+    public void setCfSyncedHandle(String cfSyncedHandle) { this.cfSyncedHandle = cfSyncedHandle; }
+    public String getAtcSyncedHandle() { return atcSyncedHandle; }
+    public void setAtcSyncedHandle(String atcSyncedHandle) { this.atcSyncedHandle = atcSyncedHandle; }
+    public Long getCfLastSubmissionEpochSecond() { return cfLastSubmissionEpochSecond; }
+    public void setCfLastSubmissionEpochSecond(Long cfLastSubmissionEpochSecond) { this.cfLastSubmissionEpochSecond = cfLastSubmissionEpochSecond; }
+    public Long getAtcLastSubmissionEpochSecond() { return atcLastSubmissionEpochSecond; }
+    public void setAtcLastSubmissionEpochSecond(Long atcLastSubmissionEpochSecond) { this.atcLastSubmissionEpochSecond = atcLastSubmissionEpochSecond; }
     public Integer getCfRating() { return cfRating; }
     public void setCfRating(Integer cfRating) { this.cfRating = cfRating; }
     public Integer getAtcRating() { return atcRating; }

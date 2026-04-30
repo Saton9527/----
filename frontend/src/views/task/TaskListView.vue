@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { ElMessage } from 'element-plus';
 import { fetchTasks } from '@/api/task';
 import type { TaskItem } from '@/types/task';
 
@@ -20,11 +21,18 @@ function tagType(taskStatus: TaskItem['status']) {
   return 'warning';
 }
 
-onMounted(async () => {
+async function loadTasks() {
   loading.value = true;
-  tasks.value = await fetchTasks();
-  loading.value = false;
-});
+  try {
+    tasks.value = await fetchTasks();
+  } catch {
+    ElMessage.error('任务列表加载失败，请稍后重试');
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(loadTasks);
 </script>
 
 <template>

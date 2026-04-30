@@ -1,7 +1,7 @@
 import http from './http';
 import { isMockEnabled, mockResolve } from './mock';
 import { unwrapList } from './utils';
-import type { StudentImportErrorItem, StudentImportResult, StudentItem, StudentUpsertPayload } from '@/types/student';
+import type { StudentImportErrorItem, StudentImportResult, StudentItem, StudentSyncJob, StudentUpsertPayload } from '@/types/student';
 
 const mockStudents: StudentItem[] = [
   {
@@ -47,6 +47,7 @@ const mockStudents: StudentItem[] = [
     totalPoints: 198.0
   }
 ];
+const mockStudentSyncJobs = new Map<string, StudentSyncJob>();
 
 export async function fetchStudents(): Promise<StudentItem[]> {
   if (isMockEnabled) {
@@ -146,6 +147,47 @@ export async function syncStudentOj(id: number): Promise<StudentItem> {
   return (await http.post(`/api/students/${id}/sync-oj`, null, {
     timeout: 180000
   })) as unknown as StudentItem;
+}
+
+export async function startStudentOjSyncJob(id: number): Promise<StudentSyncJob> {
+  if (isMockEnabled) {
+    const target = mockStudents.find((item) => item.id === id);
+    if (!target) {
+      throw new Error('学生不存在');
+    }
+    const job: StudentSyncJob = {
+      jobId: `mock-student-sync-${id}`,
+      studentId: id,
+      status: 'SUCCESS',
+      message: '学生真实 OJ 数据同步完成',
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      student: {
+        ...target,
+        cfRating: target.cfHandle ? target.cfRating + 12 : 0,
+        atcRating: target.atcHandle ? target.atcRating + 10 : 0,
+        solvedCount: target.cfHandle || target.atcHandle ? target.solvedCount + 2 : target.solvedCount,
+        totalPoints: target.cfHandle || target.atcHandle ? target.totalPoints + 2.2 : target.totalPoints
+      }
+    };
+    Object.assign(target, job.student);
+    mockStudentSyncJobs.set(job.jobId, job);
+    return mockResolve(job, 400);
+  }
+
+  return (await http.post(`/api/students/${id}/sync-oj/jobs`)) as unknown as StudentSyncJob;
+}
+
+export async function fetchStudentOjSyncJob(id: number, jobId: string): Promise<StudentSyncJob> {
+  if (isMockEnabled) {
+    const job = mockStudentSyncJobs.get(jobId);
+    if (!job || job.studentId !== id) {
+      throw new Error('同步任务不存在');
+    }
+    return mockResolve(job, 200);
+  }
+
+  return (await http.get(`/api/students/${id}/sync-oj/jobs/${jobId}`)) as unknown as StudentSyncJob;
 }
 
 export async function importStudentAtcSubmissions(id: number, file: File): Promise<StudentItem> {

@@ -12,16 +12,14 @@ export const studentMenu: MenuItem[] = [
   { label: '模拟训练赛', path: '/contests' },
   { label: '教练任务', path: '/coach-tasks' },
   { label: '排行榜', path: '/ranking' },
-  { label: '积分流水', path: '/points' }
+  { label: '积分流水', path: '/points' },
+  { label: '异常反馈', path: '/alerts' }
 ];
 
 export const coachMenu: MenuItem[] = [
   { label: '训练总览', path: '/dashboard' },
-  { label: '任务管理', path: '/tasks' },
-  { label: '题目列表', path: '/problems' },
   { label: '组队管理', path: '/teams' },
   { label: '教练任务', path: '/coach-tasks' },
-  { label: '推荐题单', path: '/problemsets' },
   { label: '模拟训练赛', path: '/contests' },
   { label: '学生管理', path: '/students' },
   { label: '排行榜', path: '/ranking' },

@@ -260,7 +260,7 @@ public class ContestReminderService {
     }
 
     private List<String> loadRecipients() {
-        List<String> dbRecipients = userAccountRepository.findAllByRoleIgnoreCase("coach").stream()
+        List<String> dbRecipients = userAccountRepository.findAll().stream()
                 .map(UserAccountEntity::getEmail)
                 .filter(email -> email != null && !email.isBlank())
                 .map(String::trim)

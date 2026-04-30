@@ -38,6 +38,8 @@ export async function fetchTasks(): Promise<TaskItem[]> {
     return mockResolve(mockTasks);
   }
 
-  const payload = await http.get('/api/tasks');
+  const payload = await http.get('/api/tasks', {
+    skipErrorMessage: true
+  });
   return unwrapList<TaskItem>(payload);
 }

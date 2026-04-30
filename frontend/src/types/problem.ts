@@ -15,6 +15,7 @@ export interface ProblemQuery {
   minRating?: number | null;
   maxRating?: number | null;
   solved?: boolean | null;
+  recommended?: boolean | null;
   page?: number;
   size?: number;
 }

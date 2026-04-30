@@ -6,11 +6,12 @@ import {
   createStudent,
   downloadStudentImportErrorReport,
   downloadStudentImportTemplate,
+  fetchStudentOjSyncJob,
   fetchStudents,
   importStudentAtcSubmissions,
   importStudents,
   parseStudentImportErrors,
-  syncStudentOj,
+  startStudentOjSyncJob,
   updateStudent
 } from '@/api/student';
 import type { StudentImportResult, StudentItem, StudentUpsertPayload } from '@/types/student';
@@ -70,10 +71,32 @@ function displayRating(handle: string | null | undefined, rating: number) {
   return handle && handle.trim() ? rating : '无';
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function waitForStudentSyncJob(studentId: number, jobId: string) {
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    const job = await fetchStudentOjSyncJob(studentId, jobId);
+    if (job.status === 'SUCCESS') {
+      return job.student;
+    }
+    if (job.status === 'FAILED') {
+      throw new Error(job.message || '同步失败');
+    }
+    await sleep(2000);
+  }
+  throw new Error('同步超时，请稍后刷新列表查看结果');
+}
+
 async function loadStudents() {
   loading.value = true;
   try {
     students.value = await fetchStudents();
+  } catch {
+    ElMessage.error('学生列表加载失败，请稍后重试');
   } finally {
     loading.value = false;
   }
@@ -128,16 +151,33 @@ async function handleDownloadTemplate() {
   try {
     await downloadStudentImportTemplate();
     ElMessage.success('模板下载已开始');
+  } catch {
+    ElMessage.error('模板下载失败，请稍后重试');
   } finally {
     downloadingTemplate.value = false;
   }
 }
 
 async function handleImport(options: UploadRequestOptions) {
+  const file = options.file as File;
+  const fileName = file.name.toLowerCase();
+  if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls')) {
+    ElMessage.warning('请上传 Excel 文件（.xlsx 或 .xls）');
+    const uploadError = {
+      name: 'UploadAjaxError',
+      message: '文件格式不正确',
+      status: 400,
+      method: 'post',
+      url: '/api/students/import'
+    } as Parameters<NonNullable<UploadRequestOptions['onError']>>[0];
+    options.onError?.(uploadError);
+    return;
+  }
+
   importing.value = true;
   importResult.value = null;
   try {
-    const result = await importStudents(options.file as File);
+    const result = await importStudents(file);
     importResult.value = result;
     ElMessage.success(`导入完成：成功 ${result.importedCount} 行`);
     await loadStudents();
@@ -170,6 +210,16 @@ async function submitStudentForm() {
     return;
   }
 
+  if (!/^\d{4}$/.test(studentForm.grade.trim())) {
+    ElMessage.warning('年级请填写 4 位数字，例如 2023');
+    return;
+  }
+
+  if (studentForm.totalPoints < 0 || studentForm.solvedCount < 0) {
+    ElMessage.warning('做题数和积分不能为负数');
+    return;
+  }
+
   const payload: StudentUpsertPayload = {
     username: studentForm.username.trim(),
     realName: studentForm.realName.trim(),
@@ -199,26 +249,64 @@ async function submitStudentForm() {
     }
     studentDialogVisible.value = false;
     await loadStudents();
+  } catch {
+    ElMessage.error(isEditingStudent.value ? '学生账号更新失败，请检查输入后重试' : '学生账号创建失败，请检查输入后重试');
   } finally {
     submittingStudent.value = false;
   }
 }
 
 async function handleSyncStudent(student: StudentItem) {
+  if (!student.cfHandle && !student.atcHandle) {
+    ElMessage.warning(`${student.realName} 还未绑定 Codeforces 或 AtCoder 账号`);
+    return;
+  }
+
   syncingStudentId.value = student.id;
   try {
-    await syncStudentOj(student.id);
+    const job = await startStudentOjSyncJob(student.id);
+    await waitForStudentSyncJob(student.id, job.jobId);
     ElMessage.success(`${student.realName} 的 OJ 数据已同步`);
     await loadStudents();
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : `${student.realName} 的 OJ 数据同步失败`);
   } finally {
     syncingStudentId.value = null;
   }
 }
 
 async function handleImportStudentAtc(student: StudentItem, options: UploadRequestOptions) {
+  const file = options.file as File;
+  if (!student.atcHandle) {
+    ElMessage.warning(`${student.realName} 尚未绑定 AtCoder 账号，无法导入提交记录`);
+    const uploadError = {
+      name: 'UploadAjaxError',
+      message: '未绑定 AtCoder 账号',
+      status: 400,
+      method: 'post',
+      url: `/api/students/${student.id}/import-atc-submissions`
+    } as Parameters<NonNullable<UploadRequestOptions['onError']>>[0];
+    options.onError?.(uploadError);
+    return;
+  }
+
+  const fileName = file.name.toLowerCase();
+  if (!fileName.endsWith('.json')) {
+    ElMessage.warning('请上传 AtCoder 导出的 JSON 文件');
+    const uploadError = {
+      name: 'UploadAjaxError',
+      message: '文件格式不正确',
+      status: 400,
+      method: 'post',
+      url: `/api/students/${student.id}/import-atc-submissions`
+    } as Parameters<NonNullable<UploadRequestOptions['onError']>>[0];
+    options.onError?.(uploadError);
+    return;
+  }
+
   importingAtcStudentId.value = student.id;
   try {
-    await importStudentAtcSubmissions(student.id, options.file as File);
+    await importStudentAtcSubmissions(student.id, file);
     ElMessage.success(`${student.realName} 的 AtCoder 提交已导入`);
     await loadStudents();
     options.onSuccess?.(student);

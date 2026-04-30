@@ -14,7 +14,13 @@ import com.acmtrain.backend.repository.TeamInviteRepository;
 import com.acmtrain.backend.repository.TeamMemberRepository;
 import com.acmtrain.backend.repository.TeamRepository;
 import com.acmtrain.backend.repository.UserAccountRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -27,6 +33,7 @@ import java.util.Optional;
 @Service
 public class TeamService {
 
+    private static final Logger logger = LoggerFactory.getLogger(TeamService.class);
     private static final DateTimeFormatter DATETIME_OUTPUT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final String CAPTAIN = "CAPTAIN";
     private static final String MEMBER = "MEMBER";
@@ -38,17 +45,26 @@ public class TeamService {
     private final TeamMemberRepository teamMemberRepository;
     private final TeamInviteRepository teamInviteRepository;
     private final UserAccountRepository userAccountRepository;
+    private final ObjectProvider<JavaMailSender> mailSenderProvider;
+    private final boolean inviteMailEnabled;
+    private final String inviteMailFrom;
 
     public TeamService(
             TeamRepository teamRepository,
             TeamMemberRepository teamMemberRepository,
             TeamInviteRepository teamInviteRepository,
-            UserAccountRepository userAccountRepository
+            UserAccountRepository userAccountRepository,
+            ObjectProvider<JavaMailSender> mailSenderProvider,
+            @Value("${acm.team.mail.enabled:false}") boolean inviteMailEnabled,
+            @Value("${acm.team.mail.from:${MAIL_FROM:no-reply@acmtrain.local}}") String inviteMailFrom
     ) {
         this.teamRepository = teamRepository;
         this.teamMemberRepository = teamMemberRepository;
         this.teamInviteRepository = teamInviteRepository;
         this.userAccountRepository = userAccountRepository;
+        this.mailSenderProvider = mailSenderProvider;
+        this.inviteMailEnabled = inviteMailEnabled;
+        this.inviteMailFrom = inviteMailFrom;
     }
 
     @Transactional
@@ -132,6 +148,9 @@ public class TeamService {
         invite.setStatus(PENDING);
         invite.setCreatedAt(LocalDateTime.now());
         TeamInviteEntity savedInvite = teamInviteRepository.save(invite);
+        TeamEntity team = mustFindTeam(teamId);
+        UserAccountEntity inviter = mustFindUser(userId);
+        sendInviteEmailIfEnabled(team, inviter, invitee, savedInvite);
 
         return toInviteResponse(savedInvite);
     }
@@ -267,5 +286,53 @@ public class TeamService {
         }
 
         return new TeamResponse(team.getId(), team.getName(), team.getCoachId(), coachName, members);
+    }
+
+    private void sendInviteEmailIfEnabled(
+            TeamEntity team,
+            UserAccountEntity inviter,
+            UserAccountEntity invitee,
+            TeamInviteEntity invite
+    ) {
+        if (!inviteMailEnabled) {
+            return;
+        }
+        String email = invitee.getEmail();
+        if (email == null || email.isBlank()) {
+            return;
+        }
+        JavaMailSender mailSender = mailSenderProvider.getIfAvailable();
+        if (mailSender == null) {
+            logger.warn("Team invite mail is enabled but JavaMailSender is unavailable.");
+            return;
+        }
+
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(inviteMailFrom);
+        message.setTo(email.trim());
+        message.setSubject("[ACM Train] 组队邀请：" + team.getName());
+        message.setText(buildInviteMailBody(team, inviter, invitee, invite));
+        try {
+            mailSender.send(message);
+        } catch (Exception ex) {
+            logger.warn("Failed to send team invite mail, inviteId={}, inviteeId={}", invite.getId(), invitee.getId(), ex);
+        }
+    }
+
+    private String buildInviteMailBody(
+            TeamEntity team,
+            UserAccountEntity inviter,
+            UserAccountEntity invitee,
+            TeamInviteEntity invite
+    ) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(invitee.getRealName()).append(" 你好，\n\n");
+        builder.append("你收到一条新的组队邀请，请及时登录系统查看。\n\n");
+        builder.append("队伍名称：").append(team.getName()).append('\n');
+        builder.append("邀请人：").append(inviter.getRealName()).append("（").append(inviter.getUsername()).append("）\n");
+        builder.append("邀请时间：").append(invite.getCreatedAt().format(DATETIME_OUTPUT)).append('\n');
+        builder.append('\n');
+        builder.append("请登录 ACM Train 接受或拒绝该邀请。");
+        return builder.toString();
     }
 }

@@ -5,6 +5,7 @@ import com.acmtrain.backend.entity.*;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 public class DtoMapper {
 
@@ -71,6 +72,7 @@ public class DtoMapper {
     public static AlertResponse toAlertResponse(AlertLogEntity entity) {
         return new AlertResponse(
                 entity.getId(),
+                entity.getUserId(),
                 entity.getUserName(),
                 entity.getRuleCode(),
                 entity.getRiskLevel(),
@@ -79,7 +81,9 @@ public class DtoMapper {
                 entity.getDescription(),
                 entity.getSuspiciousProblems(),
                 entity.getSuggestion(),
-                entity.getNotifiedAt() == null ? null : entity.getNotifiedAt().format(DATETIME_OUTPUT)
+                entity.getNotifiedAt() == null ? null : entity.getNotifiedAt().format(DATETIME_OUTPUT),
+                entity.getStudentFeedback(),
+                entity.getFeedbackAt() == null ? null : entity.getFeedbackAt().format(DATETIME_OUTPUT)
         );
     }
 
@@ -145,10 +149,15 @@ public class DtoMapper {
         return new CoachTaskResponse(
                 entity.getId(),
                 entity.getTeamId(),
+                null,
                 entity.getTitle(),
                 entity.getDescription(),
                 entity.getDeadline().format(DATETIME_OUTPUT),
-                entity.getCreatedAt().format(DATETIME_OUTPUT)
+                entity.getCreatedAt().format(DATETIME_OUTPUT),
+                0,
+                0,
+                0,
+                List.of()
         );
     }
 }

@@ -72,17 +72,20 @@ CREATE TABLE recommendation (
 );
 
 CREATE TABLE alert_log (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_name VARCHAR(64) NOT NULL,
-  rule_code VARCHAR(32) NOT NULL,
-  risk_level VARCHAR(16) NOT NULL,
-  hit_time TIMESTAMP NOT NULL,
-  status VARCHAR(16) NOT NULL,
-  description VARCHAR(500) NOT NULL,
-  suspicious_problems VARCHAR(500) NULL,
-  suggestion VARCHAR(500) NULL,
-  notified_at TIMESTAMP NULL
-);
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    user_name VARCHAR(64) NOT NULL,
+    rule_code VARCHAR(32) NOT NULL,
+    risk_level VARCHAR(16) NOT NULL,
+    hit_time TIMESTAMP NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    description VARCHAR(500) NOT NULL,
+    suspicious_problems VARCHAR(500) NULL,
+    suggestion VARCHAR(500) NULL,
+    student_feedback VARCHAR(500) NULL,
+    feedback_at TIMESTAMP NULL,
+    notified_at TIMESTAMP NULL
+  );
 
 CREATE TABLE student_info (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -92,6 +95,10 @@ CREATE TABLE student_info (
   major VARCHAR(128) NOT NULL,
   cf_handle VARCHAR(64) NULL,
   atc_handle VARCHAR(64) NULL,
+  cf_synced_handle VARCHAR(64) NULL,
+  atc_synced_handle VARCHAR(64) NULL,
+  cf_last_submission_epoch_second BIGINT NULL,
+  atc_last_submission_epoch_second BIGINT NULL,
   cf_rating INT NOT NULL,
   atc_rating INT NOT NULL,
   solved_count INT NOT NULL,

@@ -13,6 +13,7 @@ const title = ref('');
 const url = ref('');
 const startTime = ref('');
 const reminderMinutes = ref(120);
+const creating = ref(false);
 
 const canEdit = computed(() => authStore.role === 'coach');
 
@@ -26,25 +27,60 @@ async function reload() {
   loading.value = true;
   try {
     items.value = await fetchContests();
+  } catch {
+    ElMessage.error('比赛列表加载失败，请稍后重试');
   } finally {
     loading.value = false;
   }
 }
 
+function isValidDateTime(value: string) {
+  return !Number.isNaN(new Date(value.replace(' ', 'T')).getTime());
+}
+
 async function onCreate() {
-  if (!url.value.trim() || !startTime.value.trim()) return;
-  await createContest({
-    title: title.value.trim(),
-    url: url.value.trim(),
-    startTime: startTime.value.trim(),
-    reminderMinutes: reminderMinutes.value
-  });
-  title.value = '';
-  url.value = '';
-  startTime.value = '';
-  reminderMinutes.value = 120;
-  ElMessage.success('比赛提醒已添加');
-  await reload();
+  const normalizedUrl = url.value.trim();
+  const normalizedStartTime = startTime.value.trim();
+
+  if (!normalizedUrl) {
+    ElMessage.warning('请输入训练赛链接');
+    return;
+  }
+
+  if (!/^https?:\/\//i.test(normalizedUrl)) {
+    ElMessage.warning('训练赛链接需以 http:// 或 https:// 开头');
+    return;
+  }
+
+  if (!normalizedStartTime) {
+    ElMessage.warning('请输入开赛时间');
+    return;
+  }
+
+  if (!isValidDateTime(normalizedStartTime)) {
+    ElMessage.warning('开赛时间格式无效，请使用 YYYY-MM-DD HH:mm');
+    return;
+  }
+
+  creating.value = true;
+  try {
+    await createContest({
+      title: title.value.trim(),
+      url: normalizedUrl,
+      startTime: normalizedStartTime,
+      reminderMinutes: reminderMinutes.value
+    });
+    title.value = '';
+    url.value = '';
+    startTime.value = '';
+    reminderMinutes.value = 120;
+    ElMessage.success('比赛提醒已添加');
+    await reload();
+  } catch {
+    ElMessage.error('新增比赛提醒失败，请检查链接和时间格式');
+  } finally {
+    creating.value = false;
+  }
 }
 
 async function onSyncOfficial() {
@@ -52,6 +88,8 @@ async function onSyncOfficial() {
   try {
     items.value = await syncOfficialContests();
     ElMessage.success('CF / ATC 官方比赛已同步');
+  } catch {
+    ElMessage.error('官方比赛同步失败，请稍后重试');
   } finally {
     syncingOfficial.value = false;
   }
@@ -78,14 +116,20 @@ onMounted(reload);
     <section v-if="canEdit" class="section-card glass-panel add-box">
       <el-input v-model="title" placeholder="训练赛标题（可选）" />
       <el-input v-model="url" placeholder="QOJ 训练赛链接（https://qoj.ac/contest/...）" />
-      <el-input v-model="startTime" placeholder="开赛时间（2026-03-30 19:00）" />
+      <el-date-picker
+        v-model="startTime"
+        type="datetime"
+        value-format="YYYY-MM-DD HH:mm"
+        format="YYYY-MM-DD HH:mm"
+        placeholder="选择开赛时间"
+      />
       <el-select v-model="reminderMinutes">
         <el-option :value="30" label="提前 30 分钟" />
         <el-option :value="60" label="提前 1 小时" />
         <el-option :value="120" label="提前 2 小时" />
         <el-option :value="1440" label="提前 1 天" />
       </el-select>
-      <el-button type="primary" @click="onCreate">新增比赛提醒</el-button>
+      <el-button type="primary" :loading="creating" @click="onCreate">新增比赛提醒</el-button>
     </section>
 
     <section class="section-card glass-panel" v-loading="loading">
@@ -134,7 +178,7 @@ onMounted(reload);
 .add-box {
   margin-bottom: 16px;
   display: grid;
-  grid-template-columns: 220px 1fr 220px 150px auto;
+  grid-template-columns: 220px minmax(280px, 1fr) 220px 150px auto;
   gap: 10px;
 }
 

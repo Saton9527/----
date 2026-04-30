@@ -1,15 +1,16 @@
 <script setup lang="ts">
+import axios from 'axios';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus';
-import * as echarts from 'echarts';
 import { fetchDashboardAnalytics, fetchTrend, type DashboardAnalytics, type TrendPoint } from '@/api/dashboard';
 import { fetchContests } from '@/api/contest';
 import {
+  fetchMyOjSyncJob,
   fetchMyContactEmail,
   fetchMyContestHistory,
   fetchMyProfile,
   importMyAtcSubmissions,
-  syncMyOjProfile,
+  startMyOjSyncJob,
   updateMyContactEmail,
   updatePlatformBinding
 } from '@/api/profile';
@@ -79,8 +80,20 @@ const contactEmailRules: FormRules<typeof contactEmailForm> = {
   ]
 };
 
-let trendChart: echarts.ECharts | null = null;
-let pieChart: echarts.ECharts | null = null;
+type EChartsModule = typeof import('echarts');
+type EChartsInstance = ReturnType<EChartsModule['init']>;
+
+let trendChart: EChartsInstance | null = null;
+let pieChart: EChartsInstance | null = null;
+let echartsModulePromise: Promise<EChartsModule> | null = null;
+
+function loadEcharts() {
+  if (!echartsModulePromise) {
+    echartsModulePromise = import('echarts');
+  }
+
+  return echartsModulePromise;
+}
 
 async function refreshTeamInfo() {
   if (isStudent.value) {
@@ -121,12 +134,27 @@ const isTeamCaptain = computed(() => {
   return myTeam.value.members.some((member) => member.userId === authStore.user!.id && member.role === 'CAPTAIN');
 });
 
+function isDuplicateInviteError(error: unknown) {
+  if (!axios.isAxiosError(error)) {
+    return false;
+  }
+
+  const message = error.response?.data?.message;
+  return error.response?.status === 409 && typeof message === 'string' && message.includes('已向该用户发送过邀请');
+}
+
 function displayHandle(handle: string | null | undefined) {
   return handle && handle.trim() ? handle : '无';
 }
 
 function displayRating(handle: string | null | undefined, rating: number | null | undefined) {
   return handle && handle.trim() ? (rating ?? 0) : '无';
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function onAddMemberFromDashboard() {
@@ -138,12 +166,29 @@ function onAddMemberFromDashboard() {
 }
 
 async function onSubmitInviteDialog() {
-  if (!myTeam.value || !inviteDialogUsername.value.trim()) return;
-  await inviteTeamMember(myTeam.value.id, { username: inviteDialogUsername.value.trim() });
-  myTeam.value = await fetchMyTeam().catch(() => myTeam.value);
-  inviteDialogUsername.value = '';
-  inviteDialogVisible.value = false;
-  ElMessage.success('邀请已发送');
+  const username = inviteDialogUsername.value.trim();
+  if (!myTeam.value) {
+    return;
+  }
+
+  if (!username) {
+    ElMessage.warning('请输入要邀请的队员账号');
+    return;
+  }
+
+  try {
+    await inviteTeamMember(myTeam.value.id, { username });
+    myTeam.value = await fetchMyTeam().catch(() => myTeam.value);
+    inviteDialogUsername.value = '';
+    inviteDialogVisible.value = false;
+    ElMessage.success('邀请已发送');
+  } catch (error) {
+    if (isDuplicateInviteError(error)) {
+      ElMessage.info('已递交邀请，请等待对方处理');
+    } else {
+      ElMessage.error('组队邀请发送失败，请确认账号是否正确');
+    }
+  }
 }
 
 const metricCards = computed(() => {
@@ -165,11 +210,12 @@ const metricCards = computed(() => {
   ];
 });
 
-function renderTrendChart(data: TrendPoint[]) {
+async function renderTrendChart(data: TrendPoint[]) {
   if (!trendChartRef.value) {
     return;
   }
 
+  const echarts = await loadEcharts();
   trendChart?.dispose();
   trendChart = echarts.init(trendChartRef.value);
   trendChart.setOption({
@@ -209,11 +255,12 @@ function renderTrendChart(data: TrendPoint[]) {
   });
 }
 
-function renderPieChart() {
+async function renderPieChart() {
   if (!pieChartRef.value || !analytics.value) {
     return;
   }
 
+  const echarts = await loadEcharts();
   pieChart?.dispose();
   pieChart = echarts.init(pieChartRef.value);
   pieChart.setOption({
@@ -236,7 +283,21 @@ function renderPieChart() {
 
 async function refreshTrendData() {
   trendData.value = await fetchTrend().catch(() => trendData.value);
-  renderTrendChart(trendData.value);
+  await renderTrendChart(trendData.value);
+}
+
+async function waitForMySyncJob(jobId: string) {
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    const job = await fetchMyOjSyncJob(jobId);
+    if (job.status === 'SUCCESS') {
+      return job.profile;
+    }
+    if (job.status === 'FAILED') {
+      throw new Error(job.message || '真实 OJ 数据同步失败');
+    }
+    await sleep(2000);
+  }
+  throw new Error('真实 OJ 数据同步超时，请稍后刷新页面查看结果');
 }
 
 function handleResize() {
@@ -254,10 +315,6 @@ function openBindingDialog() {
 }
 
 function openContactEmailDialog() {
-  if (isStudent.value) {
-    return;
-  }
-
   contactEmailForm.email = contactEmail.value ?? '';
   contactEmailDialogVisible.value = true;
 }
@@ -276,38 +333,84 @@ async function submitBinding() {
       cfHandle,
       atcHandle
     });
+    const job = await startMyOjSyncJob();
+    const syncedProfile = await waitForMySyncJob(job.jobId);
+    if (syncedProfile) {
+      profile.value = syncedProfile;
+    }
     await refreshTrendData();
     analytics.value = await fetchDashboardAnalytics().catch(() => analytics.value);
     contestHistory.value = await fetchMyContestHistory().catch(() => contestHistory.value);
-    renderPieChart();
+    await renderPieChart();
     bindingDialogVisible.value = false;
-    ElMessage.success('平台账号绑定已更新');
+    ElMessage.success('平台账号绑定已更新，真实 OJ 数据同步完成');
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '平台账号绑定更新失败，请检查账号后重试');
   } finally {
     bindingSubmitting.value = false;
   }
 }
 
 async function onSyncOjProfile() {
+  if (!profile.value?.cfHandle && !profile.value?.atcHandle) {
+    ElMessage.warning('请先绑定 Codeforces 或 AtCoder 账号');
+    return;
+  }
+
   syncingOj.value = true;
   try {
-    profile.value = await syncMyOjProfile();
+    const job = await startMyOjSyncJob();
+    const syncedProfile = await waitForMySyncJob(job.jobId);
+    if (syncedProfile) {
+      profile.value = syncedProfile;
+    }
     await refreshTrendData();
     analytics.value = await fetchDashboardAnalytics().catch(() => analytics.value);
     contestHistory.value = await fetchMyContestHistory().catch(() => contestHistory.value);
-    renderPieChart();
+    await renderPieChart();
     ElMessage.success('真实 OJ 数据同步完成');
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '真实 OJ 数据同步失败，请稍后重试');
   } finally {
     syncingOj.value = false;
   }
 }
 
 async function handleImportAtcSubmissions(options: UploadRequestOptions) {
+  if (!profile.value?.atcHandle) {
+    ElMessage.warning('请先绑定 AtCoder 账号再导入提交记录');
+    const uploadError = {
+      name: 'UploadAjaxError',
+      message: '未绑定 AtCoder 账号',
+      status: 400,
+      method: 'post',
+      url: '/api/profile/me/import-atc-submissions'
+    } as Parameters<NonNullable<UploadRequestOptions['onError']>>[0];
+    options.onError?.(uploadError);
+    return;
+  }
+
+  const file = options.file as File;
+  const fileName = file.name.toLowerCase();
+  if (!fileName.endsWith('.json')) {
+    ElMessage.warning('请上传 AtCoder 导出的 JSON 文件');
+    const uploadError = {
+      name: 'UploadAjaxError',
+      message: '文件格式不正确',
+      status: 400,
+      method: 'post',
+      url: '/api/profile/me/import-atc-submissions'
+    } as Parameters<NonNullable<UploadRequestOptions['onError']>>[0];
+    options.onError?.(uploadError);
+    return;
+  }
+
   importingAtc.value = true;
   try {
-    profile.value = await importMyAtcSubmissions(options.file as File);
+    profile.value = await importMyAtcSubmissions(file);
     await refreshTrendData();
     analytics.value = await fetchDashboardAnalytics().catch(() => analytics.value);
-    renderPieChart();
+    await renderPieChart();
     ElMessage.success('AtCoder 提交记录导入完成');
     options.onSuccess?.(profile.value);
   } catch (error) {
@@ -337,7 +440,9 @@ async function submitContactEmail() {
     });
     contactEmail.value = response.email;
     contactEmailDialogVisible.value = false;
-    ElMessage.success('告警接收邮箱已更新');
+    ElMessage.success('绑定邮箱已更新');
+  } catch {
+    ElMessage.error('绑定邮箱更新失败，请稍后重试');
   } finally {
     contactEmailSubmitting.value = false;
   }
@@ -368,9 +473,7 @@ onMounted(async () => {
     const teamPromise = isStudent.value
       ? fetchMyTeam().catch(() => null)
       : fetchCoachTeams().catch(() => []);
-    const contactEmailPromise = isStudent.value
-      ? Promise.resolve({ email: null })
-      : fetchMyContactEmail().catch(() => ({ email: null }));
+    const contactEmailPromise = fetchMyContactEmail().catch(() => ({ email: null }));
 
     const [profileResult, trendResult, contestResult, analyticsResult, teamResult, contestHistoryResult, contactEmailResult] = await Promise.all([
       profilePromise,
@@ -395,9 +498,9 @@ onMounted(async () => {
     }
 
     await nextTick();
-    renderTrendChart(trendResult);
+    await renderTrendChart(trendResult);
     if (analytics.value) {
-      renderPieChart();
+      await renderPieChart();
     }
     window.addEventListener('resize', handleResize);
     window.addEventListener('focus', refreshTeamInfo);
@@ -433,9 +536,10 @@ onBeforeUnmount(() => {
             <el-button :loading="importingAtc" type="warning">导入 ATC 提交</el-button>
           </el-upload>
           <el-button type="primary" @click="openBindingDialog">绑定 CF / ATC 账号</el-button>
+          <el-button type="primary" plain @click="openContactEmailDialog">绑定邮箱</el-button>
         </template>
         <template v-else>
-          <el-button type="primary" @click="openContactEmailDialog">告警接收邮箱</el-button>
+          <el-button type="primary" @click="openContactEmailDialog">绑定邮箱</el-button>
         </template>
       </div>
     </div>
@@ -444,11 +548,12 @@ onBeforeUnmount(() => {
       <div class="summary-main">
         <h3>{{ profile?.realName || '未设置姓名' }}</h3>
         <p>{{ profile?.grade || '-' }}级 · {{ profile?.major || '-' }}</p>
-        <p class="profile-hint">AtCoder 做题明细支持导入登录态导出的 JSON；导入后题目列表和画像会优先显示真实记录。</p>
+        <p class="profile-hint">同步真实 OJ 会自动拉取 CF 与可用的 ATC 做题/比赛数据；若 ATC 公共接口不可用，可继续导入 JSON 作为兜底。</p>
       </div>
       <div class="summary-tags">
         <el-tag type="success">CF: {{ displayHandle(profile?.cfHandle) }}</el-tag>
         <el-tag type="warning">ATC: {{ displayHandle(profile?.atcHandle) }}</el-tag>
+        <el-tag type="info">邮箱: {{ contactEmail || '未绑定' }}</el-tag>
       </div>
     </section>
 
@@ -582,19 +687,19 @@ onBeforeUnmount(() => {
 
       <section v-else class="section-card glass-panel coach-panel">
         <div class="card-header">
-          <h3>教练关注建议</h3>
+          <h3>教练工作台</h3>
         </div>
         <div class="coach-mail-card">
           <div>
-            <h4>告警接收邮箱</h4>
-            <p>{{ contactEmail || '未设置，当前会回退到系统配置的默认收件人' }}</p>
+            <h4>绑定邮箱</h4>
+            <p>{{ contactEmail || '未设置，比赛提醒、教练任务、邀请通知会回退到系统默认收件人' }}</p>
           </div>
           <el-button type="primary" plain @click="openContactEmailDialog">修改</el-button>
         </div>
         <ul>
           <li>优先关注 3 天内无提交队员</li>
-          <li>对高频异常提交设置邮件提醒</li>
-          <li>每周按 CF / ATC 分数更新分层训练</li>
+          <li>对高频异常提交保持邮件提醒开启</li>
+          <li>定期核对组队、比赛提醒和教练任务下发情况</li>
         </ul>
       </section>
     </div>
@@ -694,16 +799,16 @@ onBeforeUnmount(() => {
       </template>
     </el-dialog>
 
-    <el-dialog v-if="!isStudent" v-model="contactEmailDialogVisible" title="告警接收邮箱" width="460px">
+    <el-dialog v-model="contactEmailDialogVisible" title="绑定邮箱" width="460px">
       <el-form ref="contactEmailFormRef" :model="contactEmailForm" :rules="contactEmailRules" label-position="top">
         <el-form-item label="邮箱地址" prop="email">
           <el-input
             v-model="contactEmailForm.email"
             maxlength="128"
-            placeholder="例如 coach@example.com"
+            placeholder="例如 user@example.com"
           />
         </el-form-item>
-        <p class="coach-mail-tip">异常检测邮件会优先发送到这里；留空时回退到系统默认收件人。</p>
+        <p class="coach-mail-tip">绑定后，比赛提醒、教练任务、组队邀请和异常通知会优先发送到这里；留空时回退到系统默认收件人。</p>
       </el-form>
       <template #footer>
         <el-button @click="contactEmailDialogVisible = false">取消</el-button>

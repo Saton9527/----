@@ -19,9 +19,6 @@ import com.acmtrain.backend.repository.StudentInfoRepository;
 import com.acmtrain.backend.repository.UserAccountRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -42,6 +39,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -50,17 +48,30 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 @Service
 public class OjSyncService {
 
     private static final ZoneId SHANGHAI_ZONE = ZoneId.of("Asia/Shanghai");
     private static final Logger logger = LoggerFactory.getLogger(OjSyncService.class);
+    private static final Duration DEFAULT_HTTP_TIMEOUT = Duration.ofSeconds(20);
+    private static final Pattern ATCODER_RATING_ROW = Pattern.compile(
+            "(?is)<th[^>]*>\\s*Rating\\s*</th>\\s*<td[^>]*>(.*?)</td>"
+    );
+    private static final List<String> ATCODER_PROBLEM_MODEL_FALLBACK_URLS = List.of(
+            "https://raw.githubusercontent.com/kenkoooo/AtCoderProblems/master/lambda-functions/time-estimator/problem-models.json",
+            "https://cdn.jsdelivr.net/gh/kenkoooo/AtCoderProblems@master/lambda-functions/time-estimator/problem-models.json"
+    );
 
     private final StudentInfoRepository studentInfoRepository;
     private final UserAccountRepository userAccountRepository;
@@ -74,6 +85,16 @@ public class OjSyncService {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final boolean schedulerEnabled;
+    private final boolean atcSubmissionsEnabled;
+    private final List<String> atcSubmissionsApiBaseUrls;
+    private final List<String> atcProblemApiBaseUrls;
+    private final long atcRequestIntervalMs;
+    private final Object atcRequestLock = new Object();
+    private final Object atcProblemMetaLock = new Object();
+    private final Map<Long, Object> userSyncLocks = new ConcurrentHashMap<>();
+    private volatile long lastAtcRequestAtMs = 0L;
+    private volatile Instant atcProblemMetaLoadedAt = Instant.EPOCH;
+    private volatile Map<String, AtCoderProblemMeta> atcProblemMetaMap = Map.of();
 
     public OjSyncService(
             StudentInfoRepository studentInfoRepository,
@@ -86,7 +107,11 @@ public class OjSyncService {
             AlertNotificationService alertNotificationService,
             CodeforcesCatalogService codeforcesCatalogService,
             ObjectMapper objectMapper,
-            @Value("${acm.sync.scheduler-enabled:false}") boolean schedulerEnabled
+            @Value("${acm.sync.scheduler-enabled:false}") boolean schedulerEnabled,
+            @Value("${acm.sync.atc-submissions-enabled:true}") boolean atcSubmissionsEnabled,
+            @Value("${acm.sync.atc-submissions-api-base-url:https://kenkoooo.com/atcoder/atcoder-api/v3}") String atcSubmissionsApiBaseUrl,
+            @Value("${acm.sync.atc-problem-api-base-url:https://kenkoooo.com/atcoder/resources}") String atcProblemApiBaseUrl,
+            @Value("${acm.sync.atc-request-interval-ms:1200}") long atcRequestIntervalMs
     ) {
         this.studentInfoRepository = studentInfoRepository;
         this.userAccountRepository = userAccountRepository;
@@ -99,7 +124,18 @@ public class OjSyncService {
         this.codeforcesCatalogService = codeforcesCatalogService;
         this.objectMapper = objectMapper;
         this.schedulerEnabled = schedulerEnabled;
+        this.atcSubmissionsEnabled = atcSubmissionsEnabled;
+        this.atcSubmissionsApiBaseUrls = parseBaseUrls(
+                atcSubmissionsApiBaseUrl,
+                "https://kenkoooo.com/atcoder/atcoder-api/v3"
+        );
+        this.atcProblemApiBaseUrls = parseBaseUrls(
+                atcProblemApiBaseUrl,
+                "https://kenkoooo.com/atcoder/resources"
+        );
+        this.atcRequestIntervalMs = Math.max(atcRequestIntervalMs, 1000L);
         this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(DEFAULT_HTTP_TIMEOUT)
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
     }
@@ -107,10 +143,12 @@ public class OjSyncService {
     @Transactional
     @CacheEvict(value = {"myProfile", "students", "recommendations", "problems", "rankings", "alerts", "points"}, allEntries = true)
     public MyProfileResponse syncMyProfile(Long userId) {
-        StudentInfoEntity student = findStudentByUserId(userId);
-        UserAccountEntity user = findUser(userId);
-        SyncedSnapshot snapshot = syncStudent(student, user);
-        return toMyProfileResponse(user, snapshot.student());
+        return executeUnderUserLock(userId, () -> {
+            StudentInfoEntity student = findStudentByUserId(userId);
+            UserAccountEntity user = findUser(userId);
+            SyncedSnapshot snapshot = syncStudent(student, user);
+            return toMyProfileResponse(user, snapshot.student());
+        });
     }
 
     @Transactional
@@ -123,9 +161,11 @@ public class OjSyncService {
 
         StudentInfoEntity student = studentInfoRepository.findById(studentId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "学生不存在"));
-        UserAccountEntity user = findUser(student.getUserId());
-        SyncedSnapshot snapshot = syncStudent(student, user);
-        return toStudentResponse(snapshot.student(), user);
+        return executeUnderUserLock(student.getUserId(), () -> {
+            UserAccountEntity user = findUser(student.getUserId());
+            SyncedSnapshot snapshot = syncStudent(student, user);
+            return toStudentResponse(snapshot.student(), user);
+        });
     }
 
     public List<OjContestHistoryResponse> getMyContestHistory(Long userId) {
@@ -137,12 +177,14 @@ public class OjSyncService {
     @Transactional
     @CacheEvict(value = {"myProfile", "students", "recommendations", "problems", "rankings", "alerts", "points"}, allEntries = true)
     public MyProfileResponse importMyAtCoderSubmissions(Long userId, MultipartFile file) {
-        StudentInfoEntity student = findStudentByUserId(userId);
-        UserAccountEntity user = findUser(userId);
-        importAtCoderSolvedProblems(user, student, file);
-        StudentInfoEntity refreshed = studentInfoRepository.save(student);
-        updateRanking(user, refreshed);
-        return toMyProfileResponse(user, refreshed);
+        return executeUnderUserLock(userId, () -> {
+            StudentInfoEntity student = findStudentByUserId(userId);
+            UserAccountEntity user = findUser(userId);
+            importAtCoderSolvedProblems(user, student, file);
+            StudentInfoEntity refreshed = studentInfoRepository.save(student);
+            updateRanking(user, refreshed);
+            return toMyProfileResponse(user, refreshed);
+        });
     }
 
     @Transactional
@@ -155,11 +197,13 @@ public class OjSyncService {
 
         StudentInfoEntity student = studentInfoRepository.findById(studentId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "学生不存在"));
-        UserAccountEntity user = findUser(student.getUserId());
-        importAtCoderSolvedProblems(user, student, file);
-        StudentInfoEntity refreshed = studentInfoRepository.save(student);
-        updateRanking(user, refreshed);
-        return toStudentResponse(refreshed, user);
+        return executeUnderUserLock(student.getUserId(), () -> {
+            UserAccountEntity user = findUser(student.getUserId());
+            importAtCoderSolvedProblems(user, student, file);
+            StudentInfoEntity refreshed = studentInfoRepository.save(student);
+            updateRanking(user, refreshed);
+            return toStudentResponse(refreshed, user);
+        });
     }
 
     @Scheduled(cron = "${acm.sync.cron:0 0 */6 * * *}")
@@ -195,15 +239,27 @@ public class OjSyncService {
     }
 
     private SyncedSnapshot syncStudent(StudentInfoEntity student, UserAccountEntity user) {
-        CodeforcesProfile cfProfile = fetchCodeforcesProfile(student.getCfHandle());
-        AtCoderProfile atCoderProfile = fetchAtCoderProfile(student.getAtcHandle());
-        List<AcceptedProblemSeed> mergedAcceptedProblems = mergeAcceptedProblems(cfProfile.acceptedProblems(), atCoderProfile.acceptedProblems());
+        boolean cfHandleChanged = isHandleChanged(student.getCfHandle(), student.getCfSyncedHandle());
+        boolean atcHandleChanged = isKnownHandleChanged(student.getAtcHandle(), student.getAtcSyncedHandle());
+
+        CodeforcesProfile cfProfile = fetchCodeforcesProfile(
+                student.getCfHandle(),
+                student.getCfLastSubmissionEpochSecond(),
+                cfHandleChanged
+        );
+        AtCoderProfile atCoderProfile = fetchAtCoderProfile(
+                student.getAtcHandle(),
+                student.getAtcLastSubmissionEpochSecond(),
+                atcHandleChanged
+        );
+        List<AcceptedProblemSeed> cfAcceptedProblems = syncCodeforcesAcceptedProblems(user.getId(), student, cfProfile, cfHandleChanged);
+        List<AcceptedProblemSeed> atCoderAcceptedProblems = syncAtCoderAcceptedProblems(user.getId(), student, atCoderProfile, atcHandleChanged);
+        List<AcceptedProblemSeed> mergedAcceptedProblems = mergeAcceptedProblems(cfAcceptedProblems, atCoderAcceptedProblems);
         List<ContestHistorySeed> mergedHistory = mergeContestHistory(cfProfile.history(), atCoderProfile.history());
-        int solvedCount = replaceSolvedProblems(user.getId(), cfProfile.acceptedProblems(), atCoderProfile.acceptedProblems());
 
         student.setCfRating(cfProfile.rating());
         student.setAtcRating(atCoderProfile.rating());
-        student.setSolvedCount(solvedCount);
+        student.setSolvedCount(mergedAcceptedProblems.size());
         student.setTotalPoints(settlePoints(user, student, mergedAcceptedProblems, mergedHistory));
         StudentInfoEntity savedStudent = studentInfoRepository.save(student);
 
@@ -213,6 +269,65 @@ public class OjSyncService {
         alertNotificationService.sendPendingAlertsIfEnabled();
 
         return new SyncedSnapshot(savedStudent, user);
+    }
+
+    private List<AcceptedProblemSeed> syncCodeforcesAcceptedProblems(
+            Long userId,
+            StudentInfoEntity student,
+            CodeforcesProfile profile,
+            boolean handleChanged
+    ) {
+        if (student.getCfHandle() == null || student.getCfHandle().isBlank()) {
+            ojSolvedProblemRepository.deleteByUserIdAndPlatform(userId, "Codeforces");
+            student.setCfLastSubmissionEpochSecond(null);
+            student.setCfSyncedHandle(null);
+            return List.of();
+        }
+
+        if (handleChanged || profile.fullRefresh()) {
+            replaceSolvedProblemsByPlatform(userId, "Codeforces", profile.acceptedProblems());
+        } else {
+            appendSolvedProblemsByPlatform(userId, "Codeforces", profile.acceptedProblems());
+        }
+
+        student.setCfSyncedHandle(student.getCfHandle().trim());
+        if (profile.latestSubmissionEpochSecond() != null && profile.latestSubmissionEpochSecond() > 0) {
+            student.setCfLastSubmissionEpochSecond(profile.latestSubmissionEpochSecond());
+        }
+        return loadAcceptedProblemSeedsByPlatform(userId, "Codeforces");
+    }
+
+    private List<AcceptedProblemSeed> syncAtCoderAcceptedProblems(
+            Long userId,
+            StudentInfoEntity student,
+            AtCoderProfile profile,
+            boolean handleChanged
+    ) {
+        if (student.getAtcHandle() == null || student.getAtcHandle().isBlank()) {
+            ojSolvedProblemRepository.deleteByUserIdAndPlatform(userId, "AtCoder");
+            student.setAtcSyncedHandle(null);
+            student.setAtcLastSubmissionEpochSecond(null);
+            return List.of();
+        }
+        if (handleChanged) {
+            ojSolvedProblemRepository.deleteByUserIdAndPlatform(userId, "AtCoder");
+        }
+
+        if (profile.acceptedProblemsFetched()) {
+            if (handleChanged || profile.fullRefresh()) {
+                replaceSolvedProblemsByPlatform(userId, "AtCoder", profile.acceptedProblems());
+            } else {
+                appendSolvedProblemsByPlatform(userId, "AtCoder", profile.acceptedProblems());
+            }
+            if (profile.latestSubmissionEpochSecond() != null && profile.latestSubmissionEpochSecond() > 0) {
+                student.setAtcLastSubmissionEpochSecond(profile.latestSubmissionEpochSecond());
+            }
+        } else if (handleChanged) {
+            student.setAtcLastSubmissionEpochSecond(null);
+        }
+
+        student.setAtcSyncedHandle(student.getAtcHandle().trim());
+        return loadAcceptedProblemSeedsByPlatform(userId, "AtCoder");
     }
 
     private List<AcceptedProblemSeed> mergeAcceptedProblems(List<AcceptedProblemSeed> cfProblems, List<AcceptedProblemSeed> atCoderProblems) {
@@ -255,12 +370,6 @@ public class OjSyncService {
         return entity;
     }
 
-    private int replaceSolvedProblems(Long userId, List<AcceptedProblemSeed> cfProblems, List<AcceptedProblemSeed> atCoderProblems) {
-        replaceSolvedProblemsByPlatform(userId, "Codeforces", cfProblems);
-        replaceSolvedProblemsByPlatform(userId, "AtCoder", atCoderProblems);
-        return ojSolvedProblemRepository.findAllByUserIdOrderByAcceptedAtDesc(userId).size();
-    }
-
     private void replaceSolvedProblemsByPlatform(Long userId, String platform, List<AcceptedProblemSeed> acceptedProblems) {
         ojSolvedProblemRepository.deleteByUserIdAndPlatform(userId, platform);
         if (acceptedProblems.isEmpty()) {
@@ -272,6 +381,25 @@ public class OjSyncService {
                 .map(problem -> toSolvedProblemEntity(userId, problem))
                 .toList();
         ojSolvedProblemRepository.saveAll(entities);
+    }
+
+    private void appendSolvedProblemsByPlatform(Long userId, String platform, List<AcceptedProblemSeed> acceptedProblems) {
+        if (acceptedProblems.isEmpty()) {
+            return;
+        }
+
+        Set<String> existingKeys = new HashSet<>();
+        ojSolvedProblemRepository.findAllByUserIdAndPlatformOrderByAcceptedAtDesc(userId, platform)
+                .forEach(problem -> existingKeys.add(problem.getSourceKey()));
+
+        List<OjSolvedProblemEntity> newEntities = acceptedProblems.stream()
+                .filter(problem -> platform.equals(problem.platform()))
+                .filter(problem -> !existingKeys.contains(toStoredSourceKey(userId, problem.sourceKey())))
+                .map(problem -> toSolvedProblemEntity(userId, problem))
+                .toList();
+        if (!newEntities.isEmpty()) {
+            ojSolvedProblemRepository.saveAll(newEntities);
+        }
     }
 
     private void importAtCoderSolvedProblems(UserAccountEntity user, StudentInfoEntity student, MultipartFile file) {
@@ -288,6 +416,12 @@ public class OjSyncService {
         }
 
         replaceSolvedProblemsByPlatform(user.getId(), "AtCoder", importedProblems);
+        student.setAtcSyncedHandle(student.getAtcHandle().trim());
+        student.setAtcLastSubmissionEpochSecond(importedProblems.stream()
+                .map(AcceptedProblemSeed::acceptedAt)
+                .map(item -> item.atZone(SHANGHAI_ZONE).toEpochSecond())
+                .max(Long::compareTo)
+                .orElse(null));
         student.setSolvedCount((int) ojSolvedProblemRepository.countByUserId(user.getId()));
         List<AcceptedProblemSeed> allAcceptedProblems = loadAcceptedProblemSeeds(user.getId());
         student.setTotalPoints(settlePoints(user, student, allAcceptedProblems, List.of()));
@@ -305,7 +439,7 @@ public class OjSyncService {
         entity.setRating(problem.rating() <= 0 ? null : problem.rating());
         entity.setTag(problem.primaryTag());
         entity.setAcceptedAt(problem.acceptedAt());
-        entity.setSourceKey(userId + ":" + problem.sourceKey());
+        entity.setSourceKey(toStoredSourceKey(userId, problem.sourceKey()));
         return entity;
     }
 
@@ -420,9 +554,9 @@ public class OjSyncService {
         rankingOverallRepository.saveAll(rankings);
     }
 
-    private CodeforcesProfile fetchCodeforcesProfile(String handle) {
+    private CodeforcesProfile fetchCodeforcesProfile(String handle, Long lastSubmissionEpochSecond, boolean forceFullRefresh) {
         if (handle == null || handle.isBlank()) {
-            return new CodeforcesProfile(0, 0, List.of(), List.of());
+            return new CodeforcesProfile(0, 0, List.of(), List.of(), null, true);
         }
         String normalized = normalizeRequiredHandle(handle, "Codeforces");
         JsonNode infoRoot = readJson("https://codeforces.com/api/user.info?handles="
@@ -434,57 +568,116 @@ public class OjSyncService {
         }
 
         int rating = info.path("rating").asInt(0);
-        JsonNode statusRoot = readJson("https://codeforces.com/api/user.status?handle="
-                + urlEncode(normalized) + "&from=1&count=10000");
-        ensureApiOk(statusRoot, "Codeforces 提交记录获取失败");
-        List<AcceptedProblemSeed> acceptedProblems = parseCodeforcesAcceptedProblems(statusRoot.path("result"));
+        CodeforcesSubmissionBatch submissionBatch = fetchCodeforcesAcceptedProblems(
+                normalized,
+                lastSubmissionEpochSecond,
+                forceFullRefresh
+        );
+        List<AcceptedProblemSeed> acceptedProblems = submissionBatch.acceptedProblems();
         int solvedCount = acceptedProblems.size();
 
         JsonNode ratingRoot = readJson("https://codeforces.com/api/user.rating?handle=" + urlEncode(normalized));
         ensureApiOk(ratingRoot, "Codeforces 比赛历史获取失败");
         List<ContestHistorySeed> history = parseCodeforcesHistory(ratingRoot.path("result"));
-        return new CodeforcesProfile(rating, solvedCount, history, acceptedProblems);
+        return new CodeforcesProfile(
+                rating,
+                solvedCount,
+                history,
+                acceptedProblems,
+                submissionBatch.latestSubmissionEpochSecond(),
+                forceFullRefresh || lastSubmissionEpochSecond == null || lastSubmissionEpochSecond <= 0
+        );
     }
 
-    private List<AcceptedProblemSeed> parseCodeforcesAcceptedProblems(JsonNode result) {
+    private CodeforcesSubmissionBatch fetchCodeforcesAcceptedProblems(
+            String handle,
+            Long lastSubmissionEpochSecond,
+            boolean forceFullRefresh
+    ) {
+        final int pageSize = 2000;
         Map<String, AcceptedProblemSeed> solved = new HashMap<>();
         Map<String, CodeforcesCatalogService.CatalogProblem> problemCatalog = codeforcesCatalogService.loadProblemMap();
-        for (JsonNode item : result) {
-            if (!"OK".equalsIgnoreCase(item.path("verdict").asText())) {
-                continue;
+        Long latestSubmissionEpochSecond = null;
+        int from = 1;
+
+        while (true) {
+            JsonNode statusRoot = readJson("https://codeforces.com/api/user.status?handle="
+                    + urlEncode(handle) + "&from=" + from + "&count=" + pageSize);
+            ensureApiOk(statusRoot, "Codeforces 提交记录获取失败");
+            JsonNode result = statusRoot.path("result");
+            if (!result.isArray() || result.isEmpty()) {
+                break;
             }
-            JsonNode problem = item.path("problem");
-            String contestId = problem.path("contestId").isMissingNode() ? "" : problem.path("contestId").asText("");
-            String index = problem.path("index").asText("");
-            String key = buildProblemKey(contestId, index);
-            if (!key.isBlank()) {
-                CodeforcesCatalogService.CatalogProblem meta = problemCatalog.getOrDefault(
-                        key,
-                        new CodeforcesCatalogService.CatalogProblem(
-                                formatCodeforcesProblemCode(contestId, index),
-                                problem.path("name").asText("Codeforces Problem"),
-                                0,
-                                "Implementation",
-                                List.of(),
-                                buildCodeforcesProblemUrl(contestId, index)
-                        )
-                );
-                solved.putIfAbsent(key, new AcceptedProblemSeed(
-                        "Codeforces",
-                        meta.problemCode(),
-                        meta.title(),
-                        meta.url(),
-                        meta.rating(),
-                        meta.primaryTag(),
-                        meta.tags(),
-                        LocalDateTime.ofInstant(Instant.ofEpochSecond(item.path("creationTimeSeconds").asLong()), SHANGHAI_ZONE),
-                        "CF:" + key
-                ));
+            if (latestSubmissionEpochSecond == null) {
+                latestSubmissionEpochSecond = result.path(0).path("creationTimeSeconds").asLong(0);
             }
+
+            boolean reachedKnownCursor = false;
+            for (JsonNode item : result) {
+                long creationTimeSeconds = item.path("creationTimeSeconds").asLong(0);
+                if (!forceFullRefresh
+                        && lastSubmissionEpochSecond != null
+                        && lastSubmissionEpochSecond > 0
+                        && creationTimeSeconds <= lastSubmissionEpochSecond) {
+                    reachedKnownCursor = true;
+                    break;
+                }
+                mergeCodeforcesAcceptedProblem(solved, problemCatalog, item);
+            }
+
+            if (reachedKnownCursor || result.size() < pageSize) {
+                break;
+            }
+            from += pageSize;
         }
-        return solved.values().stream()
+        return new CodeforcesSubmissionBatch(
+                solved.values().stream()
                 .sorted(Comparator.comparing(AcceptedProblemSeed::acceptedAt).reversed())
-                .toList();
+                .toList(),
+                latestSubmissionEpochSecond
+        );
+    }
+
+    private void mergeCodeforcesAcceptedProblem(
+            Map<String, AcceptedProblemSeed> solved,
+            Map<String, CodeforcesCatalogService.CatalogProblem> problemCatalog,
+            JsonNode item
+    ) {
+        if (!"OK".equalsIgnoreCase(item.path("verdict").asText())) {
+            return;
+        }
+        JsonNode problem = item.path("problem");
+        String contestId = problem.path("contestId").isMissingNode() ? "" : problem.path("contestId").asText("");
+        String index = problem.path("index").asText("");
+        String key = buildProblemKey(contestId, index);
+        if (key.isBlank()) {
+            return;
+        }
+
+        CodeforcesCatalogService.CatalogProblem meta = problemCatalog.getOrDefault(
+                key,
+                new CodeforcesCatalogService.CatalogProblem(
+                        formatCodeforcesProblemCode(contestId, index),
+                        problem.path("name").asText("Codeforces Problem"),
+                        0,
+                        "Implementation",
+                        List.of(),
+                        buildCodeforcesProblemUrl(contestId, index)
+                )
+        );
+        AcceptedProblemSeed candidate = new AcceptedProblemSeed(
+                "Codeforces",
+                meta.problemCode(),
+                meta.title(),
+                meta.url(),
+                meta.rating(),
+                meta.primaryTag(),
+                meta.tags(),
+                LocalDateTime.ofInstant(Instant.ofEpochSecond(item.path("creationTimeSeconds").asLong()), SHANGHAI_ZONE),
+                "CF:" + key
+        );
+        solved.merge(key, candidate, (left, right) ->
+                left.acceptedAt().isBefore(right.acceptedAt()) ? left : right);
     }
 
     private List<ContestHistorySeed> parseCodeforcesHistory(JsonNode result) {
@@ -509,37 +702,255 @@ public class OjSyncService {
         return history;
     }
 
-    private AtCoderProfile fetchAtCoderProfile(String handle) {
+    private AtCoderProfile fetchAtCoderProfile(String handle, Long lastSubmissionEpochSecond, boolean forceFullRefresh) {
         if (handle == null || handle.isBlank()) {
-            return new AtCoderProfile(0, List.of(), List.of());
+            return new AtCoderProfile(0, List.of(), List.of(), null, true, true);
         }
         String normalized = handle.trim();
-        Document profile = readHtml("https://atcoder.jp/users/" + urlEncode(normalized));
-        ensureAtCoderUserExists(profile);
-        int rating = parseAtCoderCurrentRating(profile);
+        String profileHtml = readString("https://atcoder.jp/users/" + urlEncode(normalized));
+        ensureAtCoderUserExists(profileHtml);
+        int rating = parseAtCoderCurrentRating(profileHtml);
         List<ContestHistorySeed> history = parseAtCoderHistoryJson(normalized);
-        return new AtCoderProfile(rating, history, List.of());
+        AtCoderSubmissionBatch submissionBatch = fetchAtCoderAcceptedProblems(
+                normalized,
+                lastSubmissionEpochSecond,
+                forceFullRefresh
+        );
+        return new AtCoderProfile(
+                rating,
+                history,
+                submissionBatch.acceptedProblems(),
+                submissionBatch.latestSubmissionEpochSecond(),
+                submissionBatch.fetchedSuccessfully(),
+                forceFullRefresh || lastSubmissionEpochSecond == null || lastSubmissionEpochSecond <= 0
+        );
     }
 
-    private void ensureAtCoderUserExists(Document profile) {
-        String title = profile.title();
-        String bodyText = profile.body() == null ? "" : profile.body().text();
-        if ((title != null && title.contains("404"))
-                || bodyText.contains("User not found.")
-                || bodyText.contains("404 Page Not Found")) {
+    private AtCoderSubmissionBatch fetchAtCoderAcceptedProblems(
+            String handle,
+            Long lastSubmissionEpochSecond,
+            boolean forceFullRefresh
+    ) {
+        if (!atcSubmissionsEnabled) {
+            return new AtCoderSubmissionBatch(List.of(), lastSubmissionEpochSecond, false);
+        }
+
+        Map<String, AtCoderProblemMeta> metaMap = loadAtCoderProblemMetaMap();
+        Map<String, AcceptedProblemSeed> solved = new HashMap<>();
+        Long latestSubmissionEpochSecond = null;
+        long initialFromSecond = forceFullRefresh || lastSubmissionEpochSecond == null || lastSubmissionEpochSecond <= 0
+                ? 0L
+                : lastSubmissionEpochSecond + 1;
+        Exception lastException = null;
+
+        for (String baseUrl : atcSubmissionsApiBaseUrls) {
+            long fromSecond = initialFromSecond;
+            solved.clear();
+            latestSubmissionEpochSecond = null;
+            try {
+                while (true) {
+                    JsonNode root = readAtCoderPublicJson(baseUrl
+                            + "/user/submissions?user=" + urlEncode(handle) + "&from_second=" + fromSecond);
+                    if (!root.isArray() || root.isEmpty()) {
+                        break;
+                    }
+
+                    for (JsonNode item : root) {
+                        long epochSecond = item.path("epoch_second").asLong(0L);
+                        if (latestSubmissionEpochSecond == null || epochSecond > latestSubmissionEpochSecond) {
+                            latestSubmissionEpochSecond = epochSecond;
+                        }
+                        mergeAtCoderAcceptedProblem(solved, metaMap, item);
+                        fromSecond = Math.max(fromSecond, epochSecond + 1);
+                    }
+
+                    if (root.size() < 500) {
+                        break;
+                    }
+                }
+
+                return new AtCoderSubmissionBatch(
+                        solved.values().stream()
+                                .sorted(Comparator.comparing(AcceptedProblemSeed::acceptedAt).reversed())
+                                .toList(),
+                        latestSubmissionEpochSecond == null ? lastSubmissionEpochSecond : latestSubmissionEpochSecond,
+                        true
+                );
+            } catch (Exception ex) {
+                lastException = ex;
+                logger.warn(
+                        "AtCoder submissions sync unavailable for handle={}, source={}, reason={}",
+                        handle,
+                        baseUrl,
+                        ex.getMessage()
+                );
+            }
+        }
+        return new AtCoderSubmissionBatch(List.of(), lastSubmissionEpochSecond, false);
+    }
+
+    private void mergeAtCoderAcceptedProblem(
+            Map<String, AcceptedProblemSeed> solved,
+            Map<String, AtCoderProblemMeta> metaMap,
+            JsonNode item
+    ) {
+        if (!isAcceptedSubmission(item)) {
+            return;
+        }
+
+        String taskId = firstNonBlank(
+                textValue(item, "problem_id"),
+                textValue(item, "task_id"),
+                textValue(item, "problemId"),
+                textValue(item, "taskId")
+        );
+        if (taskId == null || taskId.isBlank()) {
+            return;
+        }
+        taskId = taskId.trim().toLowerCase(Locale.ROOT);
+
+        AtCoderProblemMeta meta = metaMap.get(taskId);
+        String contestId = firstNonBlank(
+                textValue(item, "contest_id"),
+                meta == null ? null : meta.contestId(),
+                deriveAtCoderContestId(taskId)
+        );
+        if (contestId == null || contestId.isBlank()) {
+            return;
+        }
+
+        LocalDateTime acceptedAt = parseImportedAcceptedAt(item);
+        AcceptedProblemSeed candidate = new AcceptedProblemSeed(
+                "AtCoder",
+                "ATC " + taskId,
+                meta == null ? taskId : meta.title(),
+                "https://atcoder.jp/contests/" + contestId + "/tasks/" + taskId,
+                meta == null ? 0 : meta.rating(),
+                meta == null ? "Implementation" : meta.primaryTag(),
+                List.of(meta == null ? "Implementation" : meta.primaryTag()),
+                acceptedAt,
+                "ATC:" + contestId + ":" + taskId
+        );
+        solved.merge(taskId, candidate, (left, right) ->
+                left.acceptedAt().isAfter(right.acceptedAt()) ? right : left);
+    }
+
+    private Map<String, AtCoderProblemMeta> loadAtCoderProblemMetaMap() {
+        Instant now = Instant.now();
+        if (!atcProblemMetaMap.isEmpty() && Duration.between(atcProblemMetaLoadedAt, now).toHours() < 6) {
+            return atcProblemMetaMap;
+        }
+
+        synchronized (atcProblemMetaLock) {
+            if (!atcProblemMetaMap.isEmpty() && Duration.between(atcProblemMetaLoadedAt, now).toHours() < 6) {
+                return atcProblemMetaMap;
+            }
+
+            for (String baseUrl : atcProblemApiBaseUrls) {
+                Map<String, AtCoderProblemMeta> loaded = new HashMap<>();
+                try {
+                    JsonNode problemsRoot = readAtCoderPublicJson(baseUrl + "/problems.json");
+                    JsonNode modelsRoot = readAtCoderPublicJson(baseUrl + "/problem-models.json");
+                    Map<String, Integer> ratings = parseAtCoderProblemRatings(modelsRoot);
+                    for (JsonNode item : problemsRoot) {
+                        String taskId = textValue(item, "id");
+                        if (taskId == null || taskId.isBlank()) {
+                            continue;
+                        }
+                        loaded.put(taskId.toLowerCase(Locale.ROOT), new AtCoderProblemMeta(
+                                firstNonBlank(textValue(item, "title"), taskId),
+                                firstNonBlank(textValue(item, "contest_id"), deriveAtCoderContestId(taskId)),
+                                ratings.getOrDefault(taskId, 0),
+                                "Implementation"
+                        ));
+                    }
+                    atcProblemMetaMap = loaded;
+                    atcProblemMetaLoadedAt = now;
+                    break;
+                } catch (Exception ex) {
+                    logger.warn(
+                            "AtCoder problem metadata unavailable from source={}, reason={}",
+                            baseUrl,
+                            ex.getMessage()
+                    );
+                }
+            }
+
+            for (String modelsUrl : ATCODER_PROBLEM_MODEL_FALLBACK_URLS) {
+                try {
+                    JsonNode modelsRoot = readJson(modelsUrl);
+                    Map<String, AtCoderProblemMeta> loaded = buildAtCoderProblemMetaMapFromRatings(
+                            parseAtCoderProblemRatings(modelsRoot)
+                    );
+                    if (!loaded.isEmpty()) {
+                        atcProblemMetaMap = loaded;
+                        atcProblemMetaLoadedAt = now;
+                        logger.info("Loaded AtCoder problem ratings from fallback source={}", modelsUrl);
+                        break;
+                    }
+                } catch (Exception ex) {
+                    logger.warn(
+                            "AtCoder problem ratings fallback unavailable from source={}, reason={}",
+                            modelsUrl,
+                            ex.getMessage()
+                    );
+                }
+            }
+            return atcProblemMetaMap;
+        }
+    }
+
+    private Map<String, Integer> parseAtCoderProblemRatings(JsonNode modelsRoot) {
+        Map<String, Integer> ratings = new HashMap<>();
+        if (modelsRoot == null || !modelsRoot.isObject()) {
+            return ratings;
+        }
+        modelsRoot.fields().forEachRemaining(entry -> {
+            JsonNode value = entry.getValue();
+            Integer difficulty = integerValue(value, "difficulty");
+            if (difficulty != null && difficulty > 0) {
+                ratings.put(entry.getKey().toLowerCase(Locale.ROOT), difficulty);
+            }
+        });
+        return ratings;
+    }
+
+    private Map<String, AtCoderProblemMeta> buildAtCoderProblemMetaMapFromRatings(Map<String, Integer> ratings) {
+        Map<String, AtCoderProblemMeta> loaded = new HashMap<>();
+        ratings.forEach((taskId, difficulty) -> loaded.put(
+                taskId.toLowerCase(Locale.ROOT),
+                new AtCoderProblemMeta(
+                        taskId,
+                        deriveAtCoderContestId(taskId),
+                        difficulty,
+                        "Implementation"
+                )
+        ));
+        return loaded;
+    }
+
+    private void ensureAtCoderUserExists(String profileHtml) {
+        String normalizedHtml = profileHtml == null ? "" : profileHtml;
+        if (normalizedHtml.contains("<title>404")
+                || normalizedHtml.contains("User not found.")
+                || normalizedHtml.contains("404 Page Not Found")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AtCoder 账号不存在或不可访问");
         }
     }
 
-    private int parseAtCoderCurrentRating(Document profile) {
-        Element ratingRow = profile.select("table.dl-table th").stream()
-                .filter(item -> "Rating".equalsIgnoreCase(item.text().trim()))
-                .findFirst()
-                .orElse(null);
-        if (ratingRow == null || ratingRow.parent() == null) {
+    private int parseAtCoderCurrentRating(String profileHtml) {
+        if (profileHtml == null || profileHtml.isBlank()) {
             return 0;
         }
-        return parseInteger(ratingRow.parent().select("td").text());
+        Matcher matcher = ATCODER_RATING_ROW.matcher(profileHtml);
+        if (!matcher.find()) {
+            return 0;
+        }
+        String cellText = matcher.group(1)
+                .replaceAll("(?is)<[^>]+>", " ")
+                .replace("&nbsp;", " ")
+                .trim();
+        return parseInteger(cellText);
     }
 
     private List<ContestHistorySeed> parseAtCoderHistoryJson(String handle) {
@@ -582,6 +993,7 @@ public class OjSyncService {
         List<PointLogEntity> newLogs = new ArrayList<>();
         pointLogRepository.deleteByUserIdAndSourceType(user.getId(), "OJ_PROBLEM");
         pointLogRepository.deleteByUserIdAndSourceType(user.getId(), "CONTEST");
+        pointLogRepository.flush();
         for (AcceptedProblemSeed problem : acceptedProblems) {
             String sourceKey = "OJ_PROBLEM:" + user.getId() + ":" + problem.platform() + ":" + problem.problemCode();
 
@@ -684,7 +1096,23 @@ public class OjSyncService {
                         problem.getTag() == null || problem.getTag().isBlank() ? "Implementation" : problem.getTag(),
                         List.of(problem.getTag() == null || problem.getTag().isBlank() ? "Implementation" : problem.getTag()),
                         problem.getAcceptedAt(),
-                        problem.getSourceKey()
+                        stripStoredSourceKey(userId, problem.getSourceKey())
+                ))
+                .toList();
+    }
+
+    private List<AcceptedProblemSeed> loadAcceptedProblemSeedsByPlatform(Long userId, String platform) {
+        return ojSolvedProblemRepository.findAllByUserIdAndPlatformOrderByAcceptedAtDesc(userId, platform).stream()
+                .map(problem -> new AcceptedProblemSeed(
+                        problem.getPlatform(),
+                        problem.getProblemCode(),
+                        problem.getTitle(),
+                        problem.getProblemUrl(),
+                        problem.getRating() == null ? 0 : problem.getRating(),
+                        problem.getTag() == null || problem.getTag().isBlank() ? "Implementation" : problem.getTag(),
+                        List.of(problem.getTag() == null || problem.getTag().isBlank() ? "Implementation" : problem.getTag()),
+                        problem.getAcceptedAt(),
+                        stripStoredSourceKey(userId, problem.getSourceKey())
                 ))
                 .toList();
     }
@@ -726,6 +1154,7 @@ public class OjSyncService {
                     .reduce((left, right) -> left + ", " + right)
                     .orElse("无");
             persistAlert(
+                    student.getUserId(),
                     student.getRealName(),
                     "RULE_1",
                     recent24Hours.size() >= highFrequencyThreshold + 3 ? "HIGH" : "MEDIUM",
@@ -745,6 +1174,7 @@ public class OjSyncService {
                     .reduce((left, right) -> left + ", " + right)
                     .orElse("无");
             persistAlert(
+                    student.getUserId(),
                     student.getRealName(),
                     "RULE_4",
                     highJumpProblems.size() >= 4 ? "HIGH" : "MEDIUM",
@@ -758,6 +1188,7 @@ public class OjSyncService {
     }
 
     private void persistAlert(
+            Long userId,
             String userName,
             String ruleCode,
             String riskLevel,
@@ -770,6 +1201,7 @@ public class OjSyncService {
                 .filter(existing -> !existing.getHitTime().isBefore(hitTime.minusHours(12)))
                 .orElseGet(AlertLogEntity::new);
 
+        entity.setUserId(userId);
         entity.setUserName(userName);
         entity.setRuleCode(ruleCode);
         entity.setRiskLevel(riskLevel);
@@ -790,14 +1222,17 @@ public class OjSyncService {
         }
     }
 
-    private Document readHtml(String url) {
-        return Jsoup.parse(readString(url));
+    private JsonNode readAtCoderPublicJson(String url) {
+        waitForAtCoderRequestSlot();
+        return readJson(url);
     }
 
     private String readString(String url) {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .GET()
                 .header("User-Agent", "acm-train-sync/1.0")
+                .header("Accept", "application/json,text/plain,*/*")
+                .timeout(DEFAULT_HTTP_TIMEOUT)
                 .build();
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -993,6 +1428,95 @@ public class OjSyncService {
         return Integer.parseInt(normalized);
     }
 
+    private void waitForAtCoderRequestSlot() {
+        synchronized (atcRequestLock) {
+            long now = System.currentTimeMillis();
+            long waitMs = atcRequestIntervalMs - (now - lastAtcRequestAtMs);
+            if (waitMs > 0) {
+                try {
+                    Thread.sleep(waitMs);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "AtCoder 公共接口请求被中断");
+                }
+            }
+            lastAtcRequestAtMs = System.currentTimeMillis();
+        }
+    }
+
+    private String trimTrailingSlash(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = value.trim();
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    private List<String> parseBaseUrls(String rawValue, String defaultValue) {
+        String candidate = rawValue == null || rawValue.isBlank() ? defaultValue : rawValue;
+        List<String> baseUrls = new ArrayList<>();
+        for (String part : candidate.split(",")) {
+            String normalized = trimTrailingSlash(part);
+            if (!normalized.isBlank() && !baseUrls.contains(normalized)) {
+                baseUrls.add(normalized);
+            }
+        }
+        if (baseUrls.isEmpty()) {
+            baseUrls.add(trimTrailingSlash(defaultValue));
+        }
+        return List.copyOf(baseUrls);
+    }
+
+    private <T> T executeUnderUserLock(Long userId, Supplier<T> action) {
+        Object lock = userSyncLocks.computeIfAbsent(userId, ignored -> new Object());
+        synchronized (lock) {
+            return action.get();
+        }
+    }
+
+    private boolean isHandleChanged(String currentHandle, String syncedHandle) {
+        String normalizedCurrent = normalizeOptionalHandle(currentHandle);
+        String normalizedSynced = normalizeOptionalHandle(syncedHandle);
+        if (normalizedCurrent == null) {
+            return normalizedSynced != null;
+        }
+        return !normalizedCurrent.equalsIgnoreCase(normalizedSynced);
+    }
+
+    private boolean isKnownHandleChanged(String currentHandle, String syncedHandle) {
+        String normalizedCurrent = normalizeOptionalHandle(currentHandle);
+        String normalizedSynced = normalizeOptionalHandle(syncedHandle);
+        if (normalizedCurrent == null) {
+            return normalizedSynced != null;
+        }
+        if (normalizedSynced == null) {
+            return false;
+        }
+        return !normalizedCurrent.equalsIgnoreCase(normalizedSynced);
+    }
+
+    private String normalizeOptionalHandle(String handle) {
+        if (handle == null || handle.isBlank()) {
+            return null;
+        }
+        return handle.trim();
+    }
+
+    private String toStoredSourceKey(Long userId, String sourceKey) {
+        return userId + ":" + sourceKey;
+    }
+
+    private String stripStoredSourceKey(Long userId, String sourceKey) {
+        String prefix = userId + ":";
+        if (sourceKey != null && sourceKey.startsWith(prefix)) {
+            return sourceKey.substring(prefix.length());
+        }
+        return sourceKey;
+    }
+
     private StudentInfoEntity findStudentByUserId(Long userId) {
         return studentInfoRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "当前用户暂无学生档案"));
@@ -1066,14 +1590,40 @@ public class OjSyncService {
             int rating,
             int solvedCount,
             List<ContestHistorySeed> history,
-            List<AcceptedProblemSeed> acceptedProblems
+            List<AcceptedProblemSeed> acceptedProblems,
+            Long latestSubmissionEpochSecond,
+            boolean fullRefresh
+    ) {
+    }
+
+    private record CodeforcesSubmissionBatch(
+            List<AcceptedProblemSeed> acceptedProblems,
+            Long latestSubmissionEpochSecond
     ) {
     }
 
     private record AtCoderProfile(
             int rating,
             List<ContestHistorySeed> history,
-            List<AcceptedProblemSeed> acceptedProblems
+            List<AcceptedProblemSeed> acceptedProblems,
+            Long latestSubmissionEpochSecond,
+            boolean acceptedProblemsFetched,
+            boolean fullRefresh
+    ) {
+    }
+
+    private record AtCoderSubmissionBatch(
+            List<AcceptedProblemSeed> acceptedProblems,
+            Long latestSubmissionEpochSecond,
+            boolean fetchedSuccessfully
+    ) {
+    }
+
+    private record AtCoderProblemMeta(
+            String title,
+            String contestId,
+            int rating,
+            String primaryTag
     ) {
     }
 

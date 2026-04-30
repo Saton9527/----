@@ -24,7 +24,8 @@ const router = createRouter({
         {
           path: 'tasks',
           name: 'tasks',
-          component: () => import('@/views/task/TaskListView.vue')
+          component: () => import('@/views/task/TaskListView.vue'),
+          meta: { roles: ['student'] }
         },
         {
           path: 'teams',
@@ -34,12 +35,14 @@ const router = createRouter({
         {
           path: 'problemsets',
           name: 'problemsets',
-          component: () => import('@/views/ProblemsetView.vue')
+          component: () => import('@/views/ProblemsetView.vue'),
+          meta: { roles: ['student'] }
         },
         {
           path: 'problems',
           name: 'problems',
-          component: () => import('@/views/ProblemListView.vue')
+          component: () => import('@/views/ProblemListView.vue'),
+          meta: { roles: ['student'] }
         },
         {
           path: 'contests',
@@ -63,14 +66,12 @@ const router = createRouter({
         },
         {
           path: 'recommend',
-          name: 'recommend',
-          component: () => import('@/views/RecommendView.vue')
+          redirect: '/problemsets'
         },
         {
           path: 'alerts',
           name: 'alerts',
-          component: () => import('@/views/AlertView.vue'),
-          meta: { roles: ['coach'] }
+          component: () => import('@/views/AlertView.vue')
         },
         {
           path: 'students',

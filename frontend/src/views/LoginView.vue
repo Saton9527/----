@@ -25,11 +25,20 @@ async function onSubmit() {
     return;
   }
 
+  const username = form.username.trim();
+  const password = form.password.trim();
+  if (!username || !password) {
+    ElMessage.warning('请输入账号和密码');
+    return;
+  }
+
   try {
     loading.value = true;
-    await authStore.login(form);
+    await authStore.login({ username, password });
     ElMessage.success('登录成功');
     router.push('/dashboard');
+  } catch {
+    ElMessage.error('登录失败，请检查账号或密码');
   } finally {
     loading.value = false;
   }

@@ -20,14 +20,14 @@ public class ProfileContactService {
     }
 
     public ContactEmailResponse getMyContactEmail(Long userId) {
-        UserAccountEntity user = findCoach(userId);
+        UserAccountEntity user = findUser(userId);
         return new ContactEmailResponse(user.getEmail());
     }
 
     @Transactional
     @CacheEvict(value = {"alerts"}, allEntries = true)
     public ContactEmailResponse updateMyContactEmail(Long userId, UpdateContactEmailRequest request) {
-        UserAccountEntity user = findCoach(userId);
+        UserAccountEntity user = findUser(userId);
         String normalized = request.email() == null ? null : request.email().trim();
         if (normalized != null && normalized.isEmpty()) {
             normalized = null;
@@ -46,12 +46,8 @@ public class ProfileContactService {
         return new ContactEmailResponse(saved.getEmail());
     }
 
-    private UserAccountEntity findCoach(Long userId) {
-        UserAccountEntity user = userAccountRepository.findById(userId)
+    private UserAccountEntity findUser(Long userId) {
+        return userAccountRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在"));
-        if (!"coach".equalsIgnoreCase(user.getRole())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "仅教练可配置告警接收邮箱");
-        }
-        return user;
     }
 }
